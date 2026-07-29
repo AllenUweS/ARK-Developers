@@ -383,14 +383,18 @@ export function LeadLifecycleTimeline({
               <div
                 key={st}
                 onClick={() => {
-                  if (st !== lead.status) {
-                    changeStageMutation.mutate(st);
-                  }
                   if (st === "contacted") {
                     setShowConversionForm(true);
+                    toast.info("Please fill out contact channel & notes below, then click Save to update stage.");
+                    return;
                   }
                   if (st === "meeting_scheduled") {
                     setShowMeetingForm(true);
+                    toast.info("Please enter meeting date & place below, then click Save to update stage.");
+                    return;
+                  }
+                  if (st !== lead.status) {
+                    changeStageMutation.mutate(st);
                   }
                 }}
                 className="flex flex-col items-center text-center group cursor-pointer"

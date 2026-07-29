@@ -412,6 +412,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
     const targetLead = (leads ?? []).find((l) => l.id === id);
     if ((newStatus === "contacted" || newStatus === "meeting_scheduled") && targetLead) {
       setViewingLead(targetLead);
+      toast.info(`Please complete details below to transition stage to ${newStatus === "contacted" ? "Contacted" : "Meeting Scheduled"}`);
       return;
     }
     setStatus.mutate({ id, status: newStatus, fromStatus: targetLead?.status });
