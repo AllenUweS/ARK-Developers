@@ -154,3 +154,31 @@
   color: var(--secondary-cta-text);
   transition: background-color 0.3s ease;
 }
+
+/* Custom scrollbar styling */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thumb-muted-foreground\/20::-webkit-scrollbar-thumb {
+  background-color: rgb(115 115 115 / 0.2);
+  border-radius: 3px;
+}
+
+.scrollbar-thumb-muted-foreground\/40::-webkit-scrollbar-thumb {
+  background-color: rgb(115 115 115 / 0.4);
+  border-radius: 3px;
+}
+
+.scrollbar-thumb-muted-foreground\/20:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(115 115 115 / 0.4);
+}

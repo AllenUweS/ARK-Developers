@@ -271,7 +271,7 @@ export function LeadsPanel({
 
                   {/* Actions (Hover) */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity absolute right-2 top-1/2 -translate-y-1/2 bg-background/80 backdrop-blur-md p-1 rounded-lg shadow-sm border border-border/50 z-10">
-                    {plot.status === "available" && lead.status !== "converted" && (
+                    {plot.status === "available" && (
                       <>
                         {isAdmin && (
                           <button

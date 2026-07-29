@@ -2,6 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/bookings")({
@@ -12,7 +19,7 @@ const statusStyle: Record<string, string> = {
   pending: "bg-plot-pending/15 text-[color:var(--plot-pending)] border-plot-pending/30",
   approved: "bg-plot-available/15 text-plot-available border-plot-available/30",
   rejected: "bg-destructive/10 text-destructive border-destructive/30",
-  cancelled: "bg-muted text-muted-foreground",
+  cancelled: "bg-muted text-muted-foreground border-border",
   on_hold: "bg-plot-reserved/15 text-plot-reserved border-plot-reserved/30",
 };
 
@@ -35,18 +42,26 @@ function BookingsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("bookings")
-        .select("*, plots(plot_number, projects(name, code))")
+        .select("*, plots(id, plot_number, projects(name, code))")
         .order("created_at", { ascending: false });
       return data ?? [];
     },
   });
 
   const update = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: "approved" | "rejected" | "cancelled" | "on_hold" | "pending" }) => {
+    mutationFn: async ({ id, plotId, status }: { id: string; plotId?: string; status: "approved" | "rejected" | "cancelled" | "on_hold" | "pending" }) => {
       const { error } = await supabase.from("bookings").update({
         status, approved_by: user.id,
       }).eq("id", id);
       if (error) throw error;
+
+      if (plotId) {
+        if (status === "approved") {
+          await supabase.from("plots").update({ status: "booked" }).eq("id", plotId);
+        } else if (status === "cancelled" || status === "rejected") {
+          await supabase.from("plots").update({ status: "available", selected_lead_id: null } as any).eq("id", plotId);
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Booking updated");
@@ -101,16 +116,23 @@ function BookingsPage() {
                   </td>
                   {isAdmin && (
                     <td className="p-4 text-right">
-                      {b.status === "pending" && (
-                        <div className="flex gap-2 justify-end">
-                          <Button size="sm" variant="outline" onClick={() => update.mutate({ id: b.id, status: "approved" })}>
-                            Approve
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => update.mutate({ id: b.id, status: "rejected" })}>
-                            Reject
-                          </Button>
-                        </div>
-                      )}
+                      <Select
+                        value={b.status}
+                        onValueChange={(status: any) =>
+                          update.mutate({ id: b.id, plotId: b.plot_id, status })
+                        }
+                      >
+                        <SelectTrigger className="w-[125px] h-8 text-xs ml-auto capitalize">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="approved">Approved</SelectItem>
+                          <SelectItem value="on_hold">On Hold</SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </td>
                   )}
                 </tr>
@@ -158,14 +180,26 @@ function BookingsPage() {
               <div>
                 Booked on: {new Date(b.booking_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
               </div>
-              {isAdmin && b.status === "pending" && (
-                <div className="flex gap-2 w-full sm:w-auto mt-1 sm:mt-0">
-                  <Button size="sm" variant="outline" className="flex-1 sm:flex-initial" onClick={() => update.mutate({ id: b.id, status: "approved" })}>
-                    Approve
-                  </Button>
-                  <Button size="sm" variant="outline" className="flex-1 sm:flex-initial text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => update.mutate({ id: b.id, status: "rejected" })}>
-                    Reject
-                  </Button>
+              {isAdmin && (
+                <div className="flex items-center gap-2 w-full sm:w-auto mt-1 sm:mt-0">
+                  <span className="text-[11px] font-medium text-muted-foreground">Status:</span>
+                  <Select
+                    value={b.status}
+                    onValueChange={(status: any) =>
+                      update.mutate({ id: b.id, plotId: b.plot_id, status })
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs flex-1 sm:w-[130px] capitalize">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="on_hold">On Hold</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>

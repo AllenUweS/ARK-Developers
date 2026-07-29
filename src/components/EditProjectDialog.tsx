@@ -16,6 +16,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 export function EditProjectDialog({ project }: { project: any }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -24,6 +32,7 @@ export function EditProjectDialog({ project }: { project: any }) {
   const [name, setName] = useState(project?.name || "");
   const [location, setLocation] = useState(project?.location || "");
   const [description, setDescription] = useState(project?.description || "");
+  const [status, setStatus] = useState(project?.status || "upcoming");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [existingCoverUrl, setExistingCoverUrl] = useState(project?.cover_image_url || "");
 
@@ -33,6 +42,7 @@ export function EditProjectDialog({ project }: { project: any }) {
       setName(project.name || "");
       setLocation(project.location || "");
       setDescription(project.description || "");
+      setStatus(project.status || "upcoming");
       setExistingCoverUrl(project.cover_image_url || "");
       setCoverFile(null);
     }
@@ -61,6 +71,7 @@ export function EditProjectDialog({ project }: { project: any }) {
           name, 
           location, 
           description,
+          status,
           cover_image_url: finalCoverUrl 
         })
         .eq("id", project.id)
@@ -128,6 +139,20 @@ export function EditProjectDialog({ project }: { project: any }) {
               onChange={(e) => setLocation(e.target.value)}
               placeholder="e.g., North District"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="status">Project Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger id="status" className="capitalize">
+                <SelectValue placeholder="Select project status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="upcoming">Upcoming</SelectItem>
+                <SelectItem value="live">Live</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Cover Photo</Label>

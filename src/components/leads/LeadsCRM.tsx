@@ -16,6 +16,7 @@ import { LeadDetailDialog } from "./LeadDetailDialog";
 import { isOpen, getTemperature } from "./leadUtils";
 import type { EmployeeOption } from "./LeadCard";
 
+
 type Profile = {
   id: string;
   full_name: string | null;
@@ -46,6 +47,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
   const [editingLead, setEditingLead] = useState<LeadRow | null>(null);
   const [viewingLead, setViewingLead] = useState<LeadRow | null>(null);
   const [mappingLead, setMappingLead] = useState<LeadRow | null>(null);
+  const [contactDialogLead, setContactDialogLead] = useState<LeadRow | null>(null);
   const [leadTypeFilter, setLeadTypeFilter] = useState<LeadTypeFilter>("all");
 
   const { data: role, isLoading: roleLoading } = useQuery({
@@ -111,7 +113,11 @@ export function LeadsCRM({ userId }: { userId: string }) {
     queryKey: ["leads_projects"],
     enabled: !!role,
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("id, name").order("name");
+      let q = supabase.from("projects").select("id, name").order("name");
+      if (!isAdmin) {
+        q = q.eq("status", "live");
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ProjectOption[];
     },
@@ -331,13 +337,85 @@ export function LeadsCRM({ userId }: { userId: string }) {
   });
 
   const setStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: LeadStatus }) => {
+    mutationFn: async ({ id, status, fromStatus }: { id: string; status: LeadStatus; fromStatus?: string }) => {
       const { error } = await (supabase as any).from("plot_leads").update({ status }).eq("id", id);
       if (error) throw error;
+
+      await (supabase as any).from("lead_activities").insert({
+        lead_id: id,
+        activity_type: "stage_change",
+        from_status: fromStatus ?? null,
+        to_status: status,
+        performed_by: userId,
+      });
     },
     onSuccess: invalidate,
     onError: (e: any) => toast.error(e.message ?? "Failed to update status"),
   });
+
+  const submitContactInfo = useMutation({
+    mutationFn: async ({
+      id,
+      channel,
+      notes,
+      budget,
+      meetingDate,
+      meetingLocation,
+      fromStatus,
+    }: {
+      id: string;
+      channel: string;
+      notes: string;
+      budget?: number;
+      meetingDate?: string;
+      meetingLocation?: string;
+      fromStatus?: string;
+    }) => {
+      const updatePayload: any = {
+        status: "contacted",
+        contacted_at: new Date().toISOString(),
+        contacted_channel: channel,
+        contacted_notes: notes,
+      };
+      if (budget !== undefined) {
+        updatePayload.budget = budget;
+      }
+      if (meetingDate) {
+        updatePayload.meeting_date = new Date(meetingDate).toISOString();
+      }
+      if (meetingLocation) {
+        updatePayload.meeting_location = meetingLocation;
+      }
+
+      const { error } = await (supabase as any).from("plot_leads").update(updatePayload).eq("id", id);
+      if (error) throw error;
+
+      await (supabase as any).from("lead_activities").insert({
+        lead_id: id,
+        activity_type: "contacted",
+        from_status: fromStatus ?? "new",
+        to_status: "contacted",
+        channel,
+        notes,
+        performed_by: userId,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Lead moved to Contacted stage");
+      invalidate();
+      setContactDialogLead(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Failed to save contact information"),
+  });
+
+  const handleStatusChange = (id: string, newStatus: LeadStatus) => {
+    const targetLead = (leads ?? []).find((l) => l.id === id);
+    if ((newStatus === "contacted" || newStatus === "meeting_scheduled") && targetLead) {
+      setViewingLead(targetLead);
+      return;
+    }
+    setStatus.mutate({ id, status: newStatus, fromStatus: targetLead?.status });
+  };
 
   const deleteLead = useMutation({
     mutationFn: async (id: string) => {
@@ -426,7 +504,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
       }
       canReviewVisits={isAdmin}
       onOpenChange={(o) => !o && setViewingLead(null)}
-      onStatusChange={(id, status) => setStatus.mutate({ id, status })}
+      onStatusChange={(id, status) => handleStatusChange(id, status)}
       onEdit={(lead) => {
         setViewingLead(null);
         setEditingLead(lead);
@@ -532,7 +610,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
           canManageLead={canManageLead}
           projects={projectsList}
           onOpenDetail={setViewingLead}
-          onStatusChange={(id, status) => setStatus.mutate({ id, status })}
+          onStatusChange={(id, status) => handleStatusChange(id, status)}
           onEdit={setEditingLead}
           onMapToPlot={setMappingLead}
         />
@@ -673,7 +751,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
             canManageLead={canManageLead}
             projects={projectsList}
             onOpenDetail={setViewingLead}
-            onStatusChange={(id, status) => setStatus.mutate({ id, status })}
+            onStatusChange={(id, status) => handleStatusChange(id, status)}
             onEdit={setEditingLead}
             onMapToPlot={setMappingLead}
           />
@@ -803,7 +881,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
             transferOptionsFor={transferOptionsFor}
             projects={projectsList}
             onOpenDetail={setViewingLead}
-            onStatusChange={(id, status) => setStatus.mutate({ id, status })}
+            onStatusChange={(id, status) => handleStatusChange(id, status)}
             onTransfer={(id, newEmployeeId) => transferLead.mutate({ id, newEmployeeId })}
             onEdit={setEditingLead}
             onDelete={(id) => deleteLead.mutate(id)}
@@ -921,7 +999,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
             transferOptionsFor={transferOptionsFor}
             projects={projectsList}
             onOpenDetail={setViewingLead}
-            onStatusChange={(id, status) => setStatus.mutate({ id, status })}
+            onStatusChange={(id, status) => handleStatusChange(id, status)}
             onTransfer={(id, newEmployeeId) => transferLead.mutate({ id, newEmployeeId })}
             onEdit={setEditingLead}
             onDelete={(id) => deleteLead.mutate(id)}

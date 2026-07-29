@@ -57,64 +57,59 @@ export function LeadCard({
 
   return (
     <div
-      className={`group rounded-xl border border-border/60 bg-card p-3.5 shadow-sm hover:shadow-md hover:border-terracotta/30 transition-all ${onOpenDetail ? "cursor-pointer" : ""}`}
+      className="group rounded-lg border bg-card p-4 shadow-sm hover:shadow-md hover:border-terracotta/50 transition-all cursor-pointer overflow-hidden w-full"
       onClick={() => onOpenDetail?.(lead)}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-sm font-semibold truncate group-hover:text-terracotta transition-colors">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="font-semibold text-base truncate group-hover:text-terracotta transition-colors">
               {lead.name}
-            </p>
+            </h4>
             {temp === "hot" && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive">
-                <Flame className="h-2.5 w-2.5" /> Hot
-              </span>
-            )}
-            {temp === "warm" && (
-              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                Warm
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-destructive/10 text-destructive shrink-0">
+                <Flame className="h-3 w-3" /> Hot
               </span>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground mt-0.5">
             {formatShortDate(lead.created_at)}
           </p>
         </div>
 
         {canManage && (
           <div
-            className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             {!lead.plot_id && !lead.project_id && onMapToPlot && (
               <button
-                className="rounded p-1 text-terracotta hover:bg-terracotta/10 relative"
+                className="p-1.5 text-terracotta hover:bg-terracotta/10 rounded relative"
                 title="Map to plot"
                 onClick={() => onMapToPlot(lead)}
               >
-                <MapPin className="h-3 w-3" />
-                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-terracotta text-[8px] font-bold flex items-center justify-center text-white">+</span>
+                <MapPin className="h-4 w-4" />
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-terracotta text-[10px] font-bold flex items-center justify-center text-white">+</span>
               </button>
             )}
             {onEdit && (
               <button
-                className="rounded p-1 text-muted-foreground hover:bg-muted"
+                className="p-1.5 text-muted-foreground hover:bg-muted rounded"
                 title="Edit lead"
                 onClick={() => onEdit(lead)}
               >
-                <Pencil className="h-3 w-3" />
+                <Pencil className="h-4 w-4" />
               </button>
             )}
             {onDelete && (
               <button
-                className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                className="p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 rounded"
                 title="Delete lead"
                 onClick={() => {
                   if (confirm(`Remove lead "${lead.name}"?`)) onDelete(lead.id);
                 }}
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-4 w-4" />
               </button>
             )}
           </div>
@@ -122,87 +117,78 @@ export function LeadCard({
       </div>
 
       <div
-        className="flex items-center gap-2 text-[11px] text-muted-foreground mt-2"
+        className="flex items-center gap-3 text-sm text-muted-foreground mt-3 flex-wrap"
         onClick={(e) => e.stopPropagation()}
       >
         <a
           href={`tel:${lead.phone}`}
-          className="inline-flex items-center gap-1 hover:text-terracotta"
+          className="flex items-center gap-1.5 hover:text-terracotta truncate"
         >
-          <Phone className="h-2.5 w-2.5" /> {lead.phone}
+          <Phone className="h-4 w-4 shrink-0" /> {lead.phone}
         </a>
         <a
           href={`https://wa.me/91${digitsOnly(lead.phone).slice(-10)}`}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 hover:text-plot-available"
+          className="flex items-center gap-1.5 hover:text-green-600 shrink-0"
           title="Message on WhatsApp"
         >
-          <MessageCircle className="h-2.5 w-2.5" />
+          <MessageCircle className="h-4 w-4" />
         </a>
       </div>
 
       {plotLabel && (
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-1 group-hover:text-terracotta transition-colors">
-          <Map className="h-2.5 w-2.5 shrink-0" />
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-2 group-hover:text-terracotta transition-colors min-w-0">
+          <Map className="h-4 w-4 shrink-0" />
           <span className="truncate">{plotLabel}</span>
-          {onOpenDetail && (
-            <span className="ml-auto shrink-0 text-[9px] font-semibold uppercase tracking-wide text-terracotta opacity-0 group-hover:opacity-100 transition-opacity">
-              View map →
-            </span>
-          )}
         </div>
       )}
 
-      <div
-        className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-border/50"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Avatar className="h-5 w-5 shrink-0">
-            <AvatarFallback className={`text-[9px] font-semibold ${tintFor(employeeId)}`}>
+      <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <Avatar className="h-6 w-6 shrink-0">
+            <AvatarFallback className={`text-[10px] font-semibold ${tintFor(employeeId)}`}>
               {initials(employeeName)}
             </AvatarFallback>
           </Avatar>
-          <span className="text-[11px] text-muted-foreground truncate">{employeeName}</span>
+          <span className="text-xs text-muted-foreground truncate">{employeeName}</span>
         </div>
 
-        {canManage && transferOptions && transferOptions.length > 0 && onTransfer && (
-          <Select onValueChange={(v) => onTransfer(lead.id, v)}>
-            <SelectTrigger className="h-6 w-6 p-0 justify-center border-none bg-transparent shadow-none [&>svg]:hidden">
-              <ArrowLeftRight className="h-3 w-3 text-muted-foreground hover:text-terracotta" />
+        <div className="flex items-center gap-1 shrink-0 max-w-[60%] min-w-0">
+          {canManage && transferOptions && transferOptions.length > 0 && onTransfer && (
+            <Select onValueChange={(v) => onTransfer(lead.id, v)}>
+              <SelectTrigger className="h-7 w-7 p-0 justify-center border-none bg-transparent shadow-none [&>svg]:hidden shrink-0">
+                <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground hover:text-terracotta" />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {transferOptions.map((o) => (
+                  <SelectItem key={o.id} value={o.id} className="text-xs">
+                    Transfer to {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select
+            value={lead.status}
+            onValueChange={(v) => onStatusChange(lead.id, v as LeadStatus)}
+            disabled={!canManage || lead.status === "converted"}
+          >
+            <SelectTrigger
+              className={`h-7 gap-1 border px-2 text-[11px] font-medium capitalize rounded-md max-w-full overflow-hidden ${palette.badge}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${palette.dot}`} />
+              <span className="truncate max-w-[105px]">{LEAD_STATUS_LABEL[lead.status]}</span>
             </SelectTrigger>
-            <SelectContent align="end">
-              {transferOptions.map((o) => (
-                <SelectItem key={o.id} value={o.id} className="text-xs">
-                  Transfer to {o.name}
+            <SelectContent>
+              {LEAD_STATUS_ORDER.map((s) => (
+                <SelectItem key={s} value={s} className="text-xs">
+                  {LEAD_STATUS_LABEL[s]}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        )}
-      </div>
-
-      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-        <Select
-          value={lead.status}
-          onValueChange={(v) => onStatusChange(lead.id, v as LeadStatus)}
-          disabled={!canManage}
-        >
-          <SelectTrigger
-            className={`h-6 w-full gap-1 border px-2 text-[10px] font-medium capitalize rounded-full ${palette.badge}`}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${palette.dot}`} />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LEAD_STATUS_ORDER.map((s) => (
-              <SelectItem key={s} value={s} className="text-xs">
-                {LEAD_STATUS_LABEL[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        </div>
       </div>
     </div>
   );

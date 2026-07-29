@@ -20,6 +20,9 @@ import {
   Undo2,
   MousePointerClick,
   Loader2,
+  Bookmark,
+  CheckCircle2,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -389,6 +392,22 @@ export function SiteMapper({
         toast.error("Can't delete: this plot has booking history. Cancel its bookings first.");
       else toast.error(e.message ?? "Failed to delete plot");
     },
+  });
+
+  const updatePlotStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: PlotStatus }) => {
+      const updateData: any = { status };
+      if (status === "available") {
+        updateData.selected_lead_id = null;
+      }
+      const { error } = await supabase.from("plots").update(updateData).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Plot status updated");
+      invalidate();
+    },
+    onError: (e: any) => toast.error(e.message ?? "Failed to update plot status"),
   });
 
   // ---------------------------------------------------------------------
@@ -1065,6 +1084,9 @@ export function SiteMapper({
                     params: { plotId: selectedPlot.id },
                   })
                 }
+                onUpdateStatus={(status) =>
+                  updatePlotStatus.mutate({ id: selectedPlot.id, status })
+                }
               />
             ) : (
               <div className="border rounded-lg bg-background flex flex-col max-h-[65vh]">
@@ -1183,6 +1205,7 @@ export function SiteMapper({
         initial={editingPlot}
         hasPendingPolygon={!!pendingPolygon}
         pending={createPlot.isPending || updatePlotInfo.isPending}
+        isAdmin={isAdmin}
         onSubmit={submitForm}
         onOpenChange={(o) => !o && closeForm()}
       />
@@ -1211,6 +1234,7 @@ function PlotInfoCard({
   onDelete,
   onBook,
   onBookForLead,
+  onUpdateStatus,
 }: {
   plot: PlotRow;
   purchaser: PurchaserRecord | null;
@@ -1223,6 +1247,7 @@ function PlotInfoCard({
   onDelete: () => void;
   onBook: () => void;
   onBookForLead: (leadId: string) => void;
+  onUpdateStatus?: (status: PlotStatus) => void;
 }) {
   const isSoldOrBooked = plot.status === "sold" || plot.status === "booked";
 
@@ -1239,6 +1264,69 @@ function PlotInfoCard({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      {isAdmin && (
+        <div className="border rounded-md bg-muted/30 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              <ShieldCheck className="h-3 w-3 text-terracotta" /> Admin Status Control
+            </span>
+            <span className="text-[10px] text-terracotta font-medium">Instant Update</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select
+              value={plot.status}
+              onValueChange={(val) => onUpdateStatus?.(val as PlotStatus)}
+              disabled={plot.status === "sold"}
+            >
+              <SelectTrigger className="h-8 text-xs bg-background font-medium capitalize flex-1 disabled:opacity-75">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(STATUS_LABEL) as PlotStatus[]).map((s) => {
+                  const isSoldOption = s === "sold";
+                  const isDisabled = isSoldOption || plot.status === "sold";
+                  return (
+                    <SelectItem key={s} value={s} disabled={isDisabled} className="text-xs">
+                      <span className="flex items-center gap-2">
+                        <span className={`h-2 w-2 rounded-full ${STATUS_PALETTE[s].dot}`} />
+                        {STATUS_LABEL[s]} {isSoldOption ? "(Auto-set on sale)" : ""}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+
+            {plot.status === "available" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs whitespace-nowrap border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300"
+                onClick={() => onUpdateStatus?.("reserved")}
+              >
+                <Bookmark className="h-3 w-3 mr-1" /> Reserve
+              </Button>
+            )}
+
+            {plot.status === "reserved" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs whitespace-nowrap border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300"
+                onClick={() => onUpdateStatus?.("available")}
+              >
+                <CheckCircle2 className="h-3 w-3 mr-1" /> Release
+              </Button>
+            )}
+          </div>
+          {plot.status === "sold" && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-1 flex items-center gap-1">
+              <ShieldCheck className="h-3 w-3 shrink-0" /> Sold site status is permanently locked.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* If Plot is Sold or Booked, show Purchaser Details Card */}
       {isSoldOrBooked && (

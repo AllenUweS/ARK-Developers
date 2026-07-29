@@ -4,6 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 import { ArrowLeft, MapPin, Upload, FileText, Trash2, Download, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { SiteMapper } from "@/components/site-mapper/SiteMapper";
 import { EditProjectDialog } from "@/components/EditProjectDialog";
@@ -63,7 +70,7 @@ function ProjectDetail() {
     enabled: !!role,
     queryFn: async () => {
       const { data } = await supabase.from("projects").select("*").eq("id", id).maybeSingle();
-      if (data && role === "employee" && data.status !== "live") {
+      if (data && !isAdmin && data.status !== "live") {
         return null;
       }
       return data as any;
@@ -96,20 +103,20 @@ function ProjectDetail() {
     },
   });
 
-  async function goLive() {
-    const { error } = await supabase.from("projects").update({ status: "live" }).eq("id", id);
+  async function updateStatus(newStatus: "upcoming" | "live" | "completed" | "archived") {
+    const { error } = await supabase.from("projects").update({ status: newStatus }).eq("id", id);
     if (error) return toast.error(error.message);
-    toast.success("Project is now live");
+    toast.success(`Project status updated to ${newStatus}`);
     qc.invalidateQueries({ queryKey: ["project", id] });
     qc.invalidateQueries({ queryKey: ["projects"] });
   }
 
+  async function goLive() {
+    await updateStatus("live");
+  }
+
   async function makeOffline() {
-    const { error } = await supabase.from("projects").update({ status: "upcoming" }).eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success("Project is now offline");
-    qc.invalidateQueries({ queryKey: ["project", id] });
-    qc.invalidateQueries({ queryKey: ["projects"] });
+    await updateStatus("upcoming");
   }
 
   async function deleteProject() {
@@ -254,21 +261,20 @@ function ProjectDetail() {
             {isAdmin && (
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <EditProjectDialog project={project} />
-                {project.status === "upcoming" ? (
-                  <Button
-                    onClick={goLive}
-                    className="bg-terracotta text-accent-foreground hover:bg-terracotta/90"
-                  >
-                    Publish · Go live
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={makeOffline}
-                    variant="outline"
-                  >
-                    Make offline
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium">Status:</span>
+                  <Select value={project.status} onValueChange={(val) => updateStatus(val as any)}>
+                    <SelectTrigger className="w-[140px] h-9 text-xs bg-background capitalize">
+                      <SelectValue placeholder="Project Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="upcoming">Upcoming</SelectItem>
+                      <SelectItem value="live">Live</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   onClick={deleteProject}
                   variant="outline"

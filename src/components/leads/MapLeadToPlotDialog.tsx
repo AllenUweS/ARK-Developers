@@ -88,6 +88,7 @@ export function MapLeadToPlotDialog({
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, code, layout_image_url")
+        .eq("status", "live")
         .order("name");
       if (error) throw error;
       return data ?? [];

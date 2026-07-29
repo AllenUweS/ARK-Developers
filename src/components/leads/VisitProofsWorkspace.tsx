@@ -52,7 +52,7 @@ export function VisitProofsWorkspace({ userId }: { userId: string }) {
   const { data: projects = [] } = useQuery({
     queryKey: ["visit-proof-projects"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("id, name").order("name");
+      const { data, error } = await supabase.from("projects").select("id, name").eq("status", "live").order("name");
       if (error) throw error;
       return data ?? [];
     },

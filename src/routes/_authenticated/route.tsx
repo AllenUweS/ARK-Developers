@@ -22,6 +22,7 @@ import {
   MapPinned,
   FolderOpen,
   Landmark,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
@@ -79,6 +80,7 @@ function AuthedLayout() {
     { to: "/leads", label: "Leads", icon: Contact2 },
     { to: "/documents", label: "Documents", icon: FolderOpen },
     { to: "/team", label: "Team", icon: Users },
+    { to: "/analytics", label: "Analytics", icon: BarChart3 },
   ] as const;
 
   const visibleNav = [

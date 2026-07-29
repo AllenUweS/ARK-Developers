@@ -58,8 +58,6 @@ export function LeadsBoard({
   onDelete?: (id: string) => void;
   onOpenDetail?: (lead: LeadRow) => void;
   onMapToPlot?: (lead: LeadRow) => void;
-  /** When provided, shows a "choose a project" chip row above the board so
-   *  leads can be scoped to one project at a time. */
   projects?: ProjectOption[];
 }) {
   const [view, setView] = useState<"kanban" | "table">("kanban");
@@ -105,138 +103,140 @@ export function LeadsBoard({
   }, [filtered]);
 
   return (
-    <div className="space-y-4">
-      {projectsWithLeads.length > 1 && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          <button
-            onClick={() => setProjectFilter("all")}
-            className={`inline-flex items-center gap-1.5 shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-              projectFilter === "all"
-                ? "bg-terracotta text-accent-foreground border-terracotta shadow-sm"
-                : "bg-card border-border/60 text-muted-foreground hover:border-terracotta/40 hover:text-terracotta"
-            }`}
-          >
-            <Layers className="h-3 w-3" /> All projects
-            <span
-              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${projectFilter === "all" ? "bg-white/20" : "bg-muted"}`}
-            >
-              {leads.length}
-            </span>
-          </button>
-          {projectsWithLeads.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setProjectFilter(p.id)}
-              className={`inline-flex items-center gap-1.5 shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                projectFilter === p.id
-                  ? "bg-terracotta text-accent-foreground border-terracotta shadow-sm"
-                  : "bg-card border-border/60 text-muted-foreground hover:border-terracotta/40 hover:text-terracotta"
-              }`}
-            >
-              {p.name}
-              <span
-                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${projectFilter === p.id ? "bg-white/20" : "bg-muted"}`}
-              >
-                {projectLeadCounts.get(p.id) ?? 0}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="space-y-6">
+      {/* Clean toolbar */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+        <div className="flex items-center gap-3 w-full lg:w-auto">
+          <div className="relative flex-1 lg:flex-none lg:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search leads..."
+              className="pl-10 h-10 bg-card"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search name, phone..."
-            className="pl-9 bg-card"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-            <SelectTrigger className="h-9 w-[160px] text-xs">
+            <SelectTrigger className="h-10 w-40 bg-card">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all" className="text-xs">
-                All statuses
-              </SelectItem>
+              <SelectItem value="all">All statuses</SelectItem>
               {LEAD_STATUS_ORDER.map((s) => (
-                <SelectItem key={s} value={s} className="text-xs">
-                  {LEAD_STATUS_LABEL[s]}
-                </SelectItem>
+                <SelectItem key={s} value={s}>{LEAD_STATUS_LABEL[s]}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+        </div>
 
-          <div className="flex items-center rounded-md border bg-card p-0.5">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-lg border bg-card p-1">
             <Button
               size="sm"
               variant={view === "kanban" ? "default" : "ghost"}
-              className={`h-8 px-2.5 ${view === "kanban" ? "bg-terracotta text-accent-foreground hover:bg-terracotta/90" : ""}`}
+              className={`h-8 px-3 ${view === "kanban" ? "bg-terracotta text-white" : ""}`}
               onClick={() => setView("kanban")}
             >
-              <LayoutGrid className="h-3.5 w-3.5 mr-1.5" /> Kanban
+              <LayoutGrid className="h-4 w-4 mr-2" /> Kanban
             </Button>
             <Button
               size="sm"
               variant={view === "table" ? "default" : "ghost"}
-              className={`h-8 px-2.5 ${view === "table" ? "bg-terracotta text-accent-foreground hover:bg-terracotta/90" : ""}`}
+              className={`h-8 px-3 ${view === "table" ? "bg-terracotta text-white" : ""}`}
               onClick={() => setView("table")}
             >
-              <TableIcon className="h-3.5 w-3.5 mr-1.5" /> Table
+              <TableIcon className="h-4 w-4 mr-2" /> Table
             </Button>
           </div>
         </div>
       </div>
 
+      {/* Project filter - cleaner design */}
+      {projectsWithLeads.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Layers className="h-4 w-4 text-muted-foreground" />
+          <button
+            onClick={() => setProjectFilter("all")}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              projectFilter === "all"
+                ? "bg-terracotta text-white"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
+            }`}
+          >
+            All Projects <span className="ml-1.5 opacity-70">({leads.length})</span>
+          </button>
+          {projectsWithLeads.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setProjectFilter(p.id)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                projectFilter === p.id
+                  ? "bg-terracotta text-white"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {p.name} <span className="ml-1.5 opacity-70">({projectLeadCounts.get(p.id) ?? 0})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {filtered.length === 0 && (
-        <div className="text-center py-16 text-sm text-muted-foreground bg-card rounded-xl border border-border/50">
-          No leads match your filters.
+        <div className="text-center py-20 text-muted-foreground">
+          <p className="text-lg font-medium">No leads found</p>
+          <p className="text-sm mt-1">Try adjusting your filters</p>
         </div>
       )}
 
       {filtered.length > 0 && view === "kanban" && (
-        <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+        <div className="flex gap-4 items-start overflow-x-auto pb-4 -mx-4 px-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/40">
           {columns.map((col) => {
             const palette = LEAD_STATUS_PALETTE[col.status];
+            const hasLeads = col.leads.length > 0;
+
             return (
-              <div key={col.status} className="w-[280px] shrink-0">
-                <div className="flex items-center justify-between px-1 mb-3">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <span className={`h-1.5 w-1.5 rounded-full ${palette.dot}`} />
-                    {LEAD_STATUS_LABEL[col.status]}
-                  </span>
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+              <div
+                key={col.status}
+                className="flex flex-col min-w-[280px] w-full max-w-[320px] flex-1"
+              >
+                {/* Column header */}
+                <div className="flex items-center justify-between mb-4 px-1">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${palette.dot}`} />
+                    <h3 className="font-semibold text-sm">{LEAD_STATUS_LABEL[col.status]}</h3>
+                  </div>
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                     {col.leads.length}
                   </span>
                 </div>
-                <div className="space-y-3 min-h-[80px]">
-                  {col.leads.length === 0 && (
-                    <div className="text-center py-6 text-[11px] text-muted-foreground/70 border border-dashed rounded-xl">
-                      No leads
-                    </div>
-                  )}
-                  {col.leads.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      employeeId={lead.created_by}
-                      employeeName={employeeNameOf(lead.created_by)}
-                      plotLabel={plotLabelOf?.(lead)}
-                      canManage={canManageLead(lead)}
-                      transferOptions={transferOptionsFor?.(lead)}
-                      onStatusChange={onStatusChange}
-                      onTransfer={onTransfer}
-                      onEdit={onEdit}
-                      onDelete={onDelete}
-                      onOpenDetail={onOpenDetail}
-                      onMapToPlot={onMapToPlot}
-                    />
-                  ))}
+
+                {/* Cards with scrollable area */}
+                <div className="flex-1 overflow-y-auto max-h-[calc(100vh-320px)] pr-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                  <div className="space-y-3 pb-2">
+                    {!hasLeads && (
+                      <div className="text-center py-8 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
+                        No leads
+                      </div>
+                    )}
+                    {col.leads.map((lead) => (
+                      <LeadCard
+                        key={lead.id}
+                        lead={lead}
+                        employeeId={lead.created_by}
+                        employeeName={employeeNameOf(lead.created_by)}
+                        plotLabel={plotLabelOf?.(lead)}
+                        canManage={canManageLead(lead)}
+                        transferOptions={transferOptionsFor?.(lead)}
+                        onStatusChange={onStatusChange}
+                        onTransfer={onTransfer}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onOpenDetail={onOpenDetail}
+                        onMapToPlot={onMapToPlot}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             );
@@ -245,16 +245,16 @@ export function LeadsBoard({
       )}
 
       {filtered.length > 0 && view === "table" && (
-        <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
+        <div className="rounded-lg border bg-card overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Added by</TableHead>
-                <TableHead>Plot</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Added</TableHead>
+              <TableRow className="bg-muted/50">
+                <TableHead className="font-semibold">Name</TableHead>
+                <TableHead className="font-semibold">Phone</TableHead>
+                <TableHead className="font-semibold">Added by</TableHead>
+                <TableHead className="font-semibold">Plot</TableHead>
+                <TableHead className="font-semibold">Status</TableHead>
+                <TableHead className="font-semibold">Added</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -267,43 +267,43 @@ export function LeadsBoard({
                   return (
                     <TableRow
                       key={lead.id}
-                      className={onOpenDetail ? "cursor-pointer hover:bg-muted/40" : ""}
+                      className={onOpenDetail ? "cursor-pointer hover:bg-muted/30" : ""}
                       onClick={() => onOpenDetail?.(lead)}
                     >
                       <TableCell className="font-medium">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           {lead.name}
                           {temp === "hot" && (
-                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive">
+                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive">
                               Hot
                             </span>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{lead.phone}</TableCell>
+                      <TableCell className="text-muted-foreground">{lead.phone}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <Avatar className="h-5 w-5">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
                             <AvatarFallback
-                              className={`text-[9px] font-semibold ${tintFor(lead.created_by)}`}
+                              className={`text-[10px] font-semibold ${tintFor(lead.created_by)}`}
                             >
                               {initials(empName)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="text-xs">{empName}</span>
+                          <span className="text-sm">{empName}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="text-muted-foreground text-sm">
                         {plotLabelOf?.(lead) ?? "—"}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Select
                           value={lead.status}
                           onValueChange={(v) => onStatusChange(lead.id, v as LeadStatus)}
-                          disabled={!canManageLead(lead)}
+                          disabled={!canManageLead(lead) || lead.status === "converted"}
                         >
                           <SelectTrigger
-                            className={`h-6 w-auto gap-1 border px-2 text-[10px] font-medium capitalize rounded-full ${palette.badge}`}
+                            className={`h-7 w-auto gap-1.5 border px-2.5 text-xs font-medium capitalize rounded-md ${palette.badge}`}
                           >
                             <span className={`h-1.5 w-1.5 rounded-full ${palette.dot}`} />
                             <SelectValue />
@@ -317,7 +317,7 @@ export function LeadsBoard({
                           </SelectContent>
                         </Select>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="text-muted-foreground text-sm">
                         {formatShortDate(lead.created_at)}
                       </TableCell>
                     </TableRow>

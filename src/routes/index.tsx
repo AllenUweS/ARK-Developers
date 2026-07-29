@@ -443,7 +443,7 @@ function Index() {
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, location, description, cover_image_url, status, created_at")
-        .neq("status", "archived")
+        .eq("status", "live")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];

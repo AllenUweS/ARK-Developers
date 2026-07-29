@@ -97,6 +97,7 @@ export function PlotFormDialog({
   initial,
   hasPendingPolygon,
   pending,
+  isAdmin = false,
   onSubmit,
   onOpenChange,
 }: {
@@ -105,11 +106,13 @@ export function PlotFormDialog({
   initial: PlotRow | null;
   hasPendingPolygon: boolean;
   pending: boolean;
+  isAdmin?: boolean;
   onSubmit: (values: PlotFormValues) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
-  const isStatusLocked = initial?.status === "sold" || initial?.status === "booked";
+  const isSoldPlot = initial?.status === "sold";
+  const isStatusLocked = isSoldPlot || (!isAdmin && initial?.status === "booked");
 
 
   useEffect(() => {
@@ -286,17 +289,20 @@ export function PlotFormDialog({
             <div className="grid grid-cols-3 gap-2">
               {STATUS_ORDER.map((s) => {
                 const active = form.status === s;
+                const isSoldBtn = s === "sold";
+                const isDisabled = isStatusLocked || (isSoldBtn && form.status !== "sold");
                 return (
                   <button
                     key={s}
                     type="button"
-                    disabled={isStatusLocked}
-                    onClick={() => !isStatusLocked && set("status", s)}
+                    disabled={isDisabled}
+                    onClick={() => !isDisabled && set("status", s)}
+                    title={isSoldBtn && form.status !== "sold" ? "Sold status is assigned automatically upon completed sale" : undefined}
                     className={`rounded-md border px-3 py-2 text-xs font-medium capitalize transition ${
                       active
                         ? "border-terracotta bg-terracotta/10 text-terracotta"
                         : "border-border text-muted-foreground hover:bg-muted"
-                    } ${isStatusLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                    } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
                   >
                     <span
                       className={`inline-block h-1.5 w-1.5 rounded-full mr-1.5 ${STATUS_PALETTE[s].dot}`}
@@ -306,10 +312,19 @@ export function PlotFormDialog({
                 );
               })}
             </div>
-            {isStatusLocked && (
+            {isSoldPlot ? (
+              <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
+                <Lock className="h-3 w-3 shrink-0" />
+                This plot is sold. Sold plot status cannot be changed.
+              </p>
+            ) : isStatusLocked ? (
               <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
                 <Lock className="h-3 w-3 shrink-0" />
                 Status is locked for {initial?.status} plots. To alter status, update the booking pipeline.
+              </p>
+            ) : (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Note: "Sold" status is assigned automatically when a booking/sale is completed.
               </p>
             )}
           </Field>
