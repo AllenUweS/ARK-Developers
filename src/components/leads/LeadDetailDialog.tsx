@@ -12,6 +12,8 @@ import {
   StickyNote,
   History,
   Info,
+  ArrowRight,
+  CheckCircle2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -31,7 +33,8 @@ import {
   type LeadRow,
   type LeadStatus,
 } from "@/components/site-mapper/types";
-import { formatShortDate, getTemperature, initials, tintFor } from "./leadUtils";
+import { toast } from "sonner";
+import { formatShortDate, getTemperature, initials, tintFor, isAllowedStageTransition } from "./leadUtils";
 import { MiniSiteMap } from "./MiniSiteMap";
 import { SiteVisitProofPanel } from "./SiteVisitProofPanel";
 import { LeadLifecycleTimeline } from "./LeadLifecycleTimeline";
@@ -150,26 +153,39 @@ export function LeadDetailDialog({
                   </a>
                 )}
 
-                <div className="ml-auto">
-                  <Select
-                    value={lead.status}
-                    onValueChange={(v) => onStatusChange(lead.id, v as LeadStatus)}
-                    disabled={!canManage || lead.status === "converted"}
-                  >
-                    <SelectTrigger
-                      className={`h-7 w-auto gap-1.5 border px-2.5 text-[11px] font-medium capitalize rounded-full ${palette.badge}`}
+                <div className="ml-auto flex items-center gap-2 flex-wrap">
+                  {canManage && lead.status !== "converted" && lead.status !== "dropped" && onMapPlot && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onMapPlot(lead)}
+                      className="h-7 text-xs font-semibold text-terracotta border-terracotta/40 hover:bg-terracotta/10 gap-1.5 px-3 rounded-full cursor-pointer"
                     >
-                      <span className={`h-1.5 w-1.5 rounded-full ${palette.dot}`} />
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {LEAD_STATUS_ORDER.map((s) => (
-                        <SelectItem key={s} value={s} className="text-xs">
-                          {LEAD_STATUS_LABEL[s]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <MapPin className="h-3.5 w-3.5" />
+                      <span>{lead.plot_id ? "Change Plot" : "Map to Plot"}</span>
+                    </Button>
+                  )}
+
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border ${palette.badge}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${palette.dot}`} />
+                    {LEAD_STATUS_LABEL[lead.status]}
+                  </span>
+
+                  {canManage && lead.status !== "converted" && lead.status !== "dropped" && (() => {
+                    const currentIdx = LEAD_STATUS_ORDER.indexOf(lead.status);
+                    const nextStatus = LEAD_STATUS_ORDER[currentIdx + 1];
+                    if (!nextStatus) return null;
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={() => onStatusChange(lead.id, nextStatus)}
+                        className="h-7 text-xs font-bold bg-terracotta hover:bg-terracotta/90 text-white gap-1.5 px-3 shadow-xs cursor-pointer rounded-full"
+                      >
+                        <span>Advance to {LEAD_STATUS_LABEL[nextStatus]}</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    );
+                  })()}
                 </div>
               </div>
             </DialogHeader>
@@ -194,6 +210,7 @@ export function LeadDetailDialog({
                   plotNumber={plotNumber}
                   projectName={projectName}
                   onStatusChange={onStatusChange}
+                  onMapPlot={onMapPlot}
                 />
               </TabsContent>
 

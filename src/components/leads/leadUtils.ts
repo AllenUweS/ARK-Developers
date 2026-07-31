@@ -55,3 +55,16 @@ export function formatShortDate(iso?: string | null) {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
+
+import { LEAD_STATUS_ORDER } from "@/components/site-mapper/types";
+
+/** Strict step-by-step lifecycle progression rule.
+ *  Prevents stage jumping (e.g. going directly from 'new' to 'meeting_scheduled'). */
+export function isAllowedStageTransition(currentStatus: LeadStatus, targetStatus: LeadStatus): boolean {
+  if (targetStatus === "dropped") return true; // Dropping a lead can happen at any time
+  const currentIdx = LEAD_STATUS_ORDER.indexOf(currentStatus);
+  const targetIdx = LEAD_STATUS_ORDER.indexOf(targetStatus);
+  if (targetIdx < 0 || currentIdx < 0) return true;
+  if (targetIdx <= currentIdx) return true; // Reverting to a previous completed stage is allowed
+  return targetIdx === currentIdx + 1; // Advancing forward requires step-by-step (+1)
+}

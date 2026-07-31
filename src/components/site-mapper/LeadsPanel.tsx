@@ -111,12 +111,26 @@ export function LeadsPanel({
     mutationFn: async ({ id, values }: { id: string; values: Partial<LeadFormValues> }) => {
       const { error } = await (supabase as any).from("plot_leads").update(values).eq("id", id);
       if (error) throw error;
+
+      const updateData: Record<string, any> = {};
+      if (values.name) updateData.customer_name = values.name;
+      if (values.phone) updateData.customer_phone = values.phone;
+      if (values.email !== undefined) updateData.customer_email = values.email || null;
+
+      if (Object.keys(updateData).length > 0) {
+        await (supabase as any).from("bookings").update(updateData).or(`lead_id.eq.${id},plot_id.eq.${plot.id}`);
+      }
     },
     onSuccess: () => {
       toast.success("Lead updated");
       setFormOpen(false);
       setEditingLead(null);
       qc.invalidateQueries({ queryKey: ["plot-leads", plot.id] });
+      qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+      qc.invalidateQueries({ queryKey: ["plot-purchaser", plot.id] });
+      qc.invalidateQueries({ queryKey: ["project-bookings", plot.project_id] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["installment-bookings"] });
     },
     onError: (e: any) => toast.error(e.message ?? "Failed to update lead"),
   });

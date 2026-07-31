@@ -100,7 +100,8 @@ export function SiteMapper({
     queryFn: async () => {
       const { data } = await (supabase as any)
         .from("bookings")
-        .select("plot_id, customer_name, customer_phone, total_price, booking_date")
+        .select("plot_id, customer_name, customer_phone, total_price, booking_date, status")
+        .in("status", ["approved", "pending", "on_hold"])
         .order("created_at", { ascending: false });
 
       const map: Record<string, { customer_name: string; customer_phone: string }> = {};
@@ -220,6 +221,7 @@ export function SiteMapper({
         .from("bookings")
         .select("*, sales_executive:sales_executive_id(full_name, phone, email)")
         .eq("plot_id", selectedId)
+        .in("status", ["approved", "pending", "on_hold"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();

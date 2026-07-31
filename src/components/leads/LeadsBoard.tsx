@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { LayoutGrid, Table as TableIcon, Search, Layers } from "lucide-react";
+import { LayoutGrid, Table as TableIcon, Search, Layers, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,8 @@ import {
   type LeadStatus,
 } from "@/components/site-mapper/types";
 import { LeadCard, type EmployeeOption } from "./LeadCard";
-import { formatShortDate, getTemperature, initials, tintFor } from "./leadUtils";
+import { formatShortDate, getTemperature, initials, tintFor, isAllowedStageTransition } from "./leadUtils";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export interface ProjectOption {
@@ -190,7 +191,7 @@ export function LeadsBoard({
       )}
 
       {filtered.length > 0 && view === "kanban" && (
-        <div className="flex gap-4 items-start overflow-x-auto pb-4 -mx-4 px-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/40">
+        <div className="flex gap-4 items-start overflow-x-auto pb-6 -mx-4 px-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
           {columns.map((col) => {
             const palette = LEAD_STATUS_PALETTE[col.status];
             const hasLeads = col.leads.length > 0;
@@ -200,43 +201,41 @@ export function LeadsBoard({
                 key={col.status}
                 className="flex flex-col min-w-[280px] w-full max-w-[320px] flex-1"
               >
-                {/* Column header */}
-                <div className="flex items-center justify-between mb-4 px-1">
+                {/* Sticky Column header */}
+                <div className="sticky top-0 z-10 bg-card/90 backdrop-blur-md py-2.5 px-3 mb-3 rounded-xl border flex items-center justify-between shadow-2xs">
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${palette.dot}`} />
-                    <h3 className="font-semibold text-sm">{LEAD_STATUS_LABEL[col.status]}</h3>
+                    <div className={`w-2.5 h-2.5 rounded-full ${palette.dot}`} />
+                    <h3 className="font-bold text-sm text-foreground">{LEAD_STATUS_LABEL[col.status]}</h3>
                   </div>
-                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full border border-border/50">
                     {col.leads.length}
                   </span>
                 </div>
 
-                {/* Cards with scrollable area */}
-                <div className="flex-1 overflow-y-auto max-h-[calc(100vh-320px)] pr-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
-                  <div className="space-y-3 pb-2">
-                    {!hasLeads && (
-                      <div className="text-center py-8 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
-                        No leads
-                      </div>
-                    )}
-                    {col.leads.map((lead) => (
-                      <LeadCard
-                        key={lead.id}
-                        lead={lead}
-                        employeeId={lead.created_by}
-                        employeeName={employeeNameOf(lead.created_by)}
-                        plotLabel={plotLabelOf?.(lead)}
-                        canManage={canManageLead(lead)}
-                        transferOptions={transferOptionsFor?.(lead)}
-                        onStatusChange={onStatusChange}
-                        onTransfer={onTransfer}
-                        onEdit={onEdit}
-                        onDelete={onDelete}
-                        onOpenDetail={onOpenDetail}
-                        onMapToPlot={onMapToPlot}
-                      />
-                    ))}
-                  </div>
+                {/* Cards container - natural page scrolling flow */}
+                <div className="space-y-3 pb-2">
+                  {!hasLeads && (
+                    <div className="text-center py-10 text-xs text-muted-foreground border-2 border-dashed rounded-xl bg-card/40">
+                      No leads in {LEAD_STATUS_LABEL[col.status]}
+                    </div>
+                  )}
+                  {col.leads.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      employeeId={lead.created_by}
+                      employeeName={employeeNameOf(lead.created_by)}
+                      plotLabel={plotLabelOf?.(lead)}
+                      canManage={canManageLead(lead)}
+                      transferOptions={transferOptionsFor?.(lead)}
+                      onStatusChange={onStatusChange}
+                      onTransfer={onTransfer}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      onOpenDetail={onOpenDetail}
+                      onMapToPlot={onMapToPlot}
+                    />
+                  ))}
                 </div>
               </div>
             );
@@ -297,25 +296,28 @@ export function LeadsBoard({
                         {plotLabelOf?.(lead) ?? "—"}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Select
-                          value={lead.status}
-                          onValueChange={(v) => onStatusChange(lead.id, v as LeadStatus)}
-                          disabled={!canManageLead(lead) || lead.status === "converted"}
-                        >
-                          <SelectTrigger
-                            className={`h-7 w-auto gap-1.5 border px-2.5 text-xs font-medium capitalize rounded-md ${palette.badge}`}
-                          >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold rounded-md border ${palette.badge}`}>
                             <span className={`h-1.5 w-1.5 rounded-full ${palette.dot}`} />
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LEAD_STATUS_ORDER.map((s) => (
-                              <SelectItem key={s} value={s} className="text-xs">
-                                {LEAD_STATUS_LABEL[s]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                            {LEAD_STATUS_LABEL[lead.status]}
+                          </span>
+
+                          {canManageLead(lead) && lead.status !== "converted" && lead.status !== "dropped" && (() => {
+                            const currentIdx = LEAD_STATUS_ORDER.indexOf(lead.status);
+                            const nextStatus = LEAD_STATUS_ORDER[currentIdx + 1];
+                            if (!nextStatus) return null;
+                            return (
+                              <Button
+                                size="sm"
+                                onClick={() => onStatusChange(lead.id, nextStatus)}
+                                className="h-6 text-[10px] font-bold bg-terracotta hover:bg-terracotta/90 text-white gap-1 px-2 cursor-pointer rounded-md shadow-2xs"
+                              >
+                                <span>Advance to {LEAD_STATUS_LABEL[nextStatus]}</span>
+                                <ArrowRight className="h-3 w-3" />
+                              </Button>
+                            );
+                          })()}
+                        </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {formatShortDate(lead.created_at)}

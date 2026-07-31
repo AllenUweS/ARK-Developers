@@ -4,7 +4,7 @@ import { ArrowLeft, Plus, Loader2, Users, MapPin, Filter } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { type LeadRow, type LeadStatus } from "@/components/site-mapper/types";
+import { type LeadRow, type LeadStatus, LEAD_STATUS_LABEL, LEAD_STATUS_ORDER } from "@/components/site-mapper/types";
 import { LeadFormDialog, type LeadFormValues } from "@/components/site-mapper/LeadFormDialog";
 import { NewLeadDialog, type NewLeadValues } from "./NewLeadDialog";
 import { MapLeadToPlotDialog } from "./MapLeadToPlotDialog";
@@ -13,7 +13,7 @@ import { TeamsOverview, type TeamSummary } from "./TeamsOverview";
 import { EmployeesOverview, type EmployeeSummary } from "./EmployeesOverview";
 import { LeadsBoard, type ProjectOption } from "./LeadsBoard";
 import { LeadDetailDialog } from "./LeadDetailDialog";
-import { isOpen, getTemperature } from "./leadUtils";
+import { isOpen, getTemperature, isAllowedStageTransition } from "./leadUtils";
 import type { EmployeeOption } from "./LeadCard";
 
 
@@ -44,10 +44,10 @@ export function LeadsCRM({ userId }: { userId: string }) {
   const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
-  const [editingLead, setEditingLead] = useState<LeadRow | null>(null);
-  const [viewingLead, setViewingLead] = useState<LeadRow | null>(null);
-  const [mappingLead, setMappingLead] = useState<LeadRow | null>(null);
-  const [contactDialogLead, setContactDialogLead] = useState<LeadRow | null>(null);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [viewingLeadId, setViewingLeadId] = useState<string | null>(null);
+  const [mappingLeadId, setMappingLeadId] = useState<string | null>(null);
+  const [contactDialogLeadId, setContactDialogLeadId] = useState<string | null>(null);
   const [leadTypeFilter, setLeadTypeFilter] = useState<LeadTypeFilter>("all");
 
   const { data: role, isLoading: roleLoading } = useQuery({
@@ -96,6 +96,30 @@ export function LeadsCRM({ userId }: { userId: string }) {
       return (data ?? []) as LeadRow[];
     },
   });
+
+  const viewingLead = useMemo(
+    () => (viewingLeadId ? (leads ?? []).find((l) => l.id === viewingLeadId) ?? null : null),
+    [leads, viewingLeadId]
+  );
+  const setViewingLead = (lead: LeadRow | null) => setViewingLeadId(lead ? lead.id : null);
+
+  const editingLead = useMemo(
+    () => (editingLeadId ? (leads ?? []).find((l) => l.id === editingLeadId) ?? null : null),
+    [leads, editingLeadId]
+  );
+  const setEditingLead = (lead: LeadRow | null) => setEditingLeadId(lead ? lead.id : null);
+
+  const mappingLead = useMemo(
+    () => (mappingLeadId ? (leads ?? []).find((l) => l.id === mappingLeadId) ?? null : null),
+    [leads, mappingLeadId]
+  );
+  const setMappingLead = (lead: LeadRow | null) => setMappingLeadId(lead ? lead.id : null);
+
+  const contactDialogLead = useMemo(
+    () => (contactDialogLeadId ? (leads ?? []).find((l) => l.id === contactDialogLeadId) ?? null : null),
+    [leads, contactDialogLeadId]
+  );
+  const setContactDialogLead = (lead: LeadRow | null) => setContactDialogLeadId(lead ? lead.id : null);
 
   const { data: plots } = useQuery({
     queryKey: ["leads_plots"],
@@ -304,8 +328,15 @@ export function LeadsCRM({ userId }: { userId: string }) {
     [allLeads, userId, leadTypeFilter],
   );
 
-  // ---------------- Mutations ----------------
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+    qc.invalidateQueries({ queryKey: ["plot-leads"] });
+    qc.invalidateQueries({ queryKey: ["plots"] });
+    qc.invalidateQueries({ queryKey: ["plot-purchaser"] });
+    qc.invalidateQueries({ queryKey: ["project-bookings"] });
+    qc.invalidateQueries({ queryKey: ["bookings"] });
+    qc.invalidateQueries({ queryKey: ["installment-bookings"] });
+  };
 
   const createLead = useMutation({
     mutationFn: async (values: NewLeadValues) => {
@@ -327,6 +358,15 @@ export function LeadsCRM({ userId }: { userId: string }) {
     mutationFn: async ({ id, values }: { id: string; values: Partial<LeadFormValues> }) => {
       const { error } = await (supabase as any).from("plot_leads").update(values).eq("id", id);
       if (error) throw error;
+
+      const updateData: Record<string, any> = {};
+      if (values.name) updateData.customer_name = values.name;
+      if (values.phone) updateData.customer_phone = values.phone;
+      if (values.email !== undefined) updateData.customer_email = values.email || null;
+
+      if (Object.keys(updateData).length > 0) {
+        await (supabase as any).from("bookings").update(updateData).eq("lead_id", id);
+      }
     },
     onSuccess: () => {
       toast.success("Lead updated");
@@ -410,12 +450,40 @@ export function LeadsCRM({ userId }: { userId: string }) {
 
   const handleStatusChange = (id: string, newStatus: LeadStatus) => {
     const targetLead = (leads ?? []).find((l) => l.id === id);
-    if ((newStatus === "contacted" || newStatus === "meeting_scheduled") && targetLead) {
+    if (!targetLead) return;
+
+    if (!isAllowedStageTransition(targetLead.status, newStatus)) {
+      const currentIdx = LEAD_STATUS_ORDER.indexOf(targetLead.status);
+      const nextRequired = LEAD_STATUS_ORDER[currentIdx + 1];
+      toast.warning(
+        `⚠️ Strict Cycle Rule: Cannot skip from ${LEAD_STATUS_LABEL[targetLead.status]} to ${LEAD_STATUS_LABEL[newStatus]}. Please complete ${LEAD_STATUS_LABEL[nextRequired]} stage first!`
+      );
       setViewingLead(targetLead);
-      toast.info(`Please complete details below to transition stage to ${newStatus === "contacted" ? "Contacted" : "Meeting Scheduled"}`);
       return;
     }
-    setStatus.mutate({ id, status: newStatus, fromStatus: targetLead?.status });
+
+    if (newStatus === "negotiating" && !targetLead.plot_id) {
+      toast.warning(`⚠️ Site Mapping Required: Lead ${targetLead.name} must be mapped to a plot site before moving to Negotiating stage.`);
+      setViewingLead(targetLead);
+      return;
+    }
+
+    if (newStatus === "converted") {
+      if (!targetLead.plot_id) {
+        toast.warning(`⚠️ Site Mapping Required: Please map ${targetLead.name} to a site/plot before converting to a booking.`);
+        setViewingLead(targetLead);
+        return;
+      }
+      window.location.href = `/plots/${targetLead.plot_id}/book/checkout?leadId=${targetLead.id}`;
+      return;
+    }
+
+    if ((newStatus === "contacted" || newStatus === "meeting_scheduled" || newStatus === "negotiating") && targetLead) {
+      setViewingLead(targetLead);
+      toast.info(`Please complete stage details to transition from ${LEAD_STATUS_LABEL[targetLead.status]} → ${LEAD_STATUS_LABEL[newStatus]}`);
+      return;
+    }
+    setStatus.mutate({ id, status: newStatus, fromStatus: targetLead.status });
   };
 
   const deleteLead = useMutation({

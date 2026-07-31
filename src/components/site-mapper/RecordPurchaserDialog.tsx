@@ -144,12 +144,58 @@ export function RecordPurchaserDialog({
         }
       }
 
+      // Sync matching plot_leads so customer details align in Leads tab as well
+      const leadIdToUpdate = (existingPurchaser as any)?.lead_id || (existingPurchaser as any)?.lead?.id;
+      const { data: existingLeads } = await (supabase as any)
+        .from("plot_leads")
+        .select("id")
+        .or(`plot_id.eq.${plot.id}${leadIdToUpdate ? `,id.eq.${leadIdToUpdate}` : ""},phone.eq.${form.customer_phone.trim()}`);
+
+      if (existingLeads && existingLeads.length > 0) {
+        for (const l of existingLeads) {
+          await (supabase as any).from("plot_leads").update({
+            name: form.customer_name.trim(),
+            phone: form.customer_phone.trim(),
+            email: form.customer_email.trim() || null,
+            plot_id: plot.id,
+            project_id: plot.project_id,
+            budget: totalPriceNum,
+            status: "converted",
+          }).eq("id", l.id);
+        }
+      } else {
+        // Create new converted lead record so it appears in Leads tab
+        await (supabase as any).from("plot_leads").insert({
+          plot_id: plot.id,
+          project_id: plot.project_id,
+          name: form.customer_name.trim(),
+          phone: form.customer_phone.trim(),
+          email: form.customer_email.trim() || null,
+          budget: totalPriceNum,
+          status: "converted",
+          source: "Site Mapper Purchaser Record",
+          created_by: userId,
+          assigned_to: userId,
+        });
+      }
+
       toast.success(
         existingPurchaser ? "Purchaser info updated!" : "Purchaser details recorded successfully!"
       );
+      // Invalidate all related caches so changes reflect immediately across all tabs
+      qc.invalidateQueries({ queryKey: ["plots"] });
       qc.invalidateQueries({ queryKey: ["plots", plot.project_id] });
       qc.invalidateQueries({ queryKey: ["plot-purchaser", plot.id] });
+      qc.invalidateQueries({ queryKey: ["project-bookings", plot.project_id] });
       qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+      qc.invalidateQueries({ queryKey: ["plot-leads"] });
+      qc.invalidateQueries({ queryKey: ["installment-bookings"] });
+      qc.invalidateQueries({ queryKey: ["installment-payments"] });
+      qc.invalidateQueries({ queryKey: ["user-notifications"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-data"] });
+      qc.invalidateQueries({ queryKey: ["incentives"] });
+      qc.invalidateQueries({ queryKey: ["my-incentives"] });
       onOpenChange(false);
       if (onSuccess) onSuccess();
     } catch (err: any) {

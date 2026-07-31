@@ -60,7 +60,7 @@ function Dashboard() {
       const [projects, plots, bookings, leads, messages, incentives, profiles] = await Promise.all([
         supabase.from("projects").select("id, status, created_at"),
         supabase.from("plots").select("id, status, price, project_id"),
-        (supabase as any).from("bookings").select("id, status, total_price, booking_amount, incentive_amount, booking_date, created_at, sales_executive_id, customer_name, customer_phone, plots(plot_number, projects(name, code))").order("created_at", { ascending: false }),
+        (supabase as any).from("bookings").select("id, status, total_price, booking_amount, advance_paid, incentive_amount, booking_date, created_at, sales_executive_id, customer_name, customer_phone, plots(plot_number, projects(name, code))").order("created_at", { ascending: false }),
         (supabase as any).from("plot_leads").select("id, name, status, created_at"),
         supabase.from("contact_messages").select("id, status, created_at"),
         (supabase as any).from("incentive_grants").select("id, amount, granted_at"),
@@ -75,30 +75,41 @@ function Dashboard() {
       const i = (incentives as any).data ?? [];
       const prof = (profiles.data ?? []) as any[];
 
-      // Calculate monthly revenue
+      // Only count active bookings (matching Treasury logic)
+      const activeStatuses = ["pending", "approved", "on_hold", "completed"];
+      const activeBookingsList = b.filter((x: any) => activeStatuses.includes(x.status));
+
+      // Calculate monthly collections (using advance_paid = actual cash collected, matching Treasury)
       const now = new Date();
       const thisMonthStart = startOfMonth(now);
       const thisMonthEnd = endOfMonth(now);
       const lastMonthStart = startOfMonth(subMonths(now, 1));
       const lastMonthEnd = endOfMonth(subMonths(now, 1));
 
-      const thisMonthRevenue = b
+      const thisMonthRevenue = activeBookingsList
         .filter((x: any) => {
           const date = new Date(x.created_at);
-          return (x.status === "approved" || x.status === "completed") && date >= thisMonthStart && date <= thisMonthEnd;
+          return date >= thisMonthStart && date <= thisMonthEnd;
         })
-        .reduce((s: number, x: any) => s + Number(x.total_price ?? 0), 0);
+        .reduce((s: number, x: any) => s + Number(x.advance_paid ?? 0), 0);
 
-      const lastMonthRevenue = b
+      const lastMonthRevenue = activeBookingsList
         .filter((x: any) => {
           const date = new Date(x.created_at);
-          return (x.status === "approved" || x.status === "completed") && date >= lastMonthStart && date <= lastMonthEnd;
+          return date >= lastMonthStart && date <= lastMonthEnd;
         })
-        .reduce((s: number, x: any) => s + Number(x.total_price ?? 0), 0);
+        .reduce((s: number, x: any) => s + Number(x.advance_paid ?? 0), 0);
 
       const revenueGrowth = lastMonthRevenue > 0
         ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
         : 0;
+
+      // Total collections = sum of advance_paid across all active bookings (matches Treasury "Total Collections")
+      const totalCollections = activeBookingsList.reduce((s: number, x: any) => s + Number(x.advance_paid ?? 0), 0);
+      // Total agreed = sum of total_price across all active bookings (matches Treasury "Total Agreed Revenue")
+      const totalAgreedRevenue = activeBookingsList.reduce((s: number, x: any) => s + Number(x.total_price ?? 0), 0);
+      // Outstanding = agreed - collected (matches Treasury "Outstanding Receivables")
+      const totalOutstanding = Math.max(0, totalAgreedRevenue - totalCollections);
 
       return {
         totalProjects: p.length,
@@ -108,10 +119,12 @@ function Dashboard() {
         availablePlots: pl.filter((x) => x.status === "available").length,
         bookedPlots: pl.filter((x) => x.status === "booked" || x.status === "sold").length,
         pendingPlots: pl.filter((x) => x.status === "pending").length,
-        totalBookings: b.length,
-        approvedBookings: b.filter((x: any) => x.status === "approved" || x.status === "completed").length,
-        pendingBookings: b.filter((x: any) => x.status === "pending").length,
-        totalRevenue: b.filter((x: any) => x.status === "approved" || x.status === "completed").reduce((s: number, x: any) => s + Number(x.total_price ?? 0), 0),
+        totalBookings: activeBookingsList.length,
+        activeBookings: activeBookingsList.filter((x: any) => x.status === "approved" || x.status === "completed").length,
+        pendingBookings: activeBookingsList.filter((x: any) => x.status === "pending").length,
+        totalCollections,
+        totalAgreedRevenue,
+        totalOutstanding,
         thisMonthRevenue,
         lastMonthRevenue,
         revenueGrowth,
@@ -122,7 +135,7 @@ function Dashboard() {
         unreadMessages: m.filter((x) => x.status === "new" || x.status === "unread" || !x.status).length,
         totalIncentivesPaid: i.length > 0 
           ? i.reduce((s: number, x: any) => s + Number(x.amount ?? 0), 0)
-          : b.reduce((s: number, x: any) => s + Number(x.incentive_amount ?? 0), 0),
+          : activeBookingsList.reduce((s: number, x: any) => s + Number(x.incentive_amount ?? 0), 0),
         totalEmployees: prof.length,
         recentBookings: b.slice(0, 5),
         recentLeads: l.slice(0, 5),
@@ -146,7 +159,7 @@ function Dashboard() {
     }
   };
 
-  const achievementPercent = Math.min(100, Math.round(((stats?.thisMonthRevenue ?? 0) / monthlyTarget) * 100));
+  const achievementPercent = monthlyTarget > 0 ? Math.min(100, Math.round(((stats?.thisMonthRevenue ?? 0) / monthlyTarget) * 100)) : 0;
 
   const formatMoney = (amount: number) => {
     if (!amount || isNaN(amount)) return "₹0";
@@ -219,15 +232,15 @@ function Dashboard() {
           <CardContent className="p-5 relative z-10">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground truncate">Total Revenue</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground truncate">Total Collections</p>
                 <p className="text-2xl lg:text-3xl font-extrabold text-display mt-1 bg-gradient-to-r from-ink via-terracotta to-ink dark:from-white dark:via-terracotta dark:to-white bg-clip-text text-transparent truncate">
-                  {money(stats?.totalRevenue ?? 0)}
+                  {money(stats?.totalCollections ?? 0)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-2 truncate">
                   {stats?.revenueGrowth && stats.revenueGrowth > 0 ? (
                     <span className="text-emerald-600 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">↑ {stats.revenueGrowth.toFixed(0)}% vs last month</span>
                   ) : (
-                    <span className="text-muted-foreground font-medium">All time approved</span>
+                    <span className="text-muted-foreground font-medium">Realized cash in hand</span>
                   )}
                 </p>
               </div>
@@ -244,7 +257,7 @@ function Dashboard() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground truncate">Active Bookings</p>
-                <p className="text-2xl lg:text-3xl font-extrabold text-display mt-1 text-emerald-600 dark:text-emerald-400 truncate">{stats?.approvedBookings ?? 0}</p>
+                <p className="text-2xl lg:text-3xl font-extrabold text-display mt-1 text-emerald-600 dark:text-emerald-400 truncate">{stats?.totalBookings ?? 0}</p>
                 <p className="text-xs text-muted-foreground mt-2 truncate">
                   {stats?.pendingBookings && stats.pendingBookings > 0 ? (
                     <span className="text-terracotta font-semibold bg-terracotta/10 px-2 py-0.5 rounded-full border border-terracotta/20">{stats.pendingBookings} pending approval</span>
@@ -335,7 +348,7 @@ function Dashboard() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm gap-2">
                 <span className="text-muted-foreground font-medium truncate">
-                  Monthly Target Achievement ({formatMoney(stats?.thisMonthRevenue ?? 0)} of {formatMoney(monthlyTarget)})
+                  Monthly Collections ({formatMoney(stats?.thisMonthRevenue ?? 0)} of {formatMoney(monthlyTarget)})
                 </span>
                 <span className="font-semibold text-terracotta shrink-0">
                   {achievementPercent}%
@@ -351,17 +364,17 @@ function Dashboard() {
                 <p className="text-xl sm:text-2xl font-bold text-display text-terracotta truncate">
                   {formatMoney(stats?.thisMonthRevenue ?? 0)}
                 </p>
-                <p className="text-xs font-medium text-muted-foreground mt-1">This Month</p>
+                <p className="text-xs font-medium text-muted-foreground mt-1">Collected This Month</p>
               </div>
               <div className="text-center p-4 rounded-xl bg-muted/40 border border-border/40 backdrop-blur-xs min-w-0">
                 <p className="text-xl sm:text-2xl font-bold text-display text-ink dark:text-foreground truncate">
                   {formatMoney(stats?.lastMonthRevenue ?? 0)}
                 </p>
-                <p className="text-xs font-medium text-muted-foreground mt-1">Last Month</p>
+                <p className="text-xs font-medium text-muted-foreground mt-1">Collected Last Month</p>
               </div>
               <div className="text-center p-4 rounded-xl bg-muted/40 border border-border/40 backdrop-blur-xs min-w-0">
                 <p className="text-xl sm:text-2xl font-bold text-display text-ink dark:text-foreground truncate">
-                  {stats?.approvedBookings ?? 0}
+                  {stats?.totalBookings ?? 0}
                 </p>
                 <p className="text-xs font-medium text-muted-foreground mt-1">Total Bookings</p>
               </div>

@@ -305,11 +305,21 @@ function DocumentsPage() {
   // Delete document mutation
   const deleteDocumentMutation = useMutation({
     mutationFn: async (doc: { id: string; file_path: string }) => {
-      const { error: storageError } = await supabase.storage
-        .from("documents")
-        .remove([doc.file_path]);
-      if (storageError) throw storageError;
+      // Storage remove (non-blocking if file missing)
+      if (doc.file_path) {
+        try {
+          const { error: storageError } = await supabase.storage
+            .from("documents")
+            .remove([doc.file_path]);
+          if (storageError) {
+            console.warn("Storage deletion note:", storageError.message);
+          }
+        } catch (err) {
+          console.warn("Storage deletion exception:", err);
+        }
+      }
 
+      // DB delete
       const { error: dbError } = await (supabase
         .from("documents" as any)
         .delete()
@@ -550,12 +560,15 @@ function DocumentsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setItemToDelete({
-                          type: "document",
-                          id: doc.id,
-                          name: doc.name,
-                          file_path: doc.file_path
-                        })}
+                        onClick={() => {
+                          setItemToDelete({
+                            type: "document",
+                            id: doc.id,
+                            name: doc.name,
+                            file_path: doc.file_path
+                          });
+                          setDeleteDialogOpen(true);
+                        }}
                         className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="h-4 w-4" />
