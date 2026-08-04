@@ -29,9 +29,8 @@ export function AIDataAnalystCard({
         title: "Strong Revenue Momentum",
         text: `You have realized ₹${(totalCash / 100000).toFixed(1)} Lakhs in cash out of ₹${(
           totalCommitted / 100000
-        ).toFixed(1)} Lakhs committed deals. Collection efficiency is sitting at ${
-          totalCommitted > 0 ? Math.round((totalCash / totalCommitted) * 100) : 0
-        }%.`,
+        ).toFixed(1)} Lakhs committed deals. Collection efficiency is sitting at ${totalCommitted > 0 ? Math.round((totalCash / totalCommitted) * 100) : 0
+          }%.`,
       },
       {
         icon: Lightbulb,
@@ -65,7 +64,7 @@ export function AIDataAnalystCard({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-extrabold tracking-tight text-slate-100">AI Data Analyst Insights</h3>
+              <h3 className="text-lg font-extrabold tracking-tight text-slate-100">Data Analyst Insights</h3>
               <span className="text-[10px] font-mono uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
                 No Data Analyst Required
               </span>

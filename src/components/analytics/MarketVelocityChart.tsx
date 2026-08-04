@@ -48,33 +48,37 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
       const d = new Date(b.booking_date);
       if (isNaN(d.getTime())) return;
       const key = d.toLocaleDateString("en-IN", { month: "short" });
-      if (!map.has(key)) map.set(key, { totalVal: 0, count: 0 });
-      const item = map.get(key)!;
-      item.totalVal += Number(b.total_price || 0);
-      item.count += 1;
+      const current = map.get(key) || { totalVal: 0, count: 0 };
+      map.set(key, {
+        totalVal: current.totalVal + (Number(b.total_price) || 0),
+        count: current.count + 1,
+      });
     });
 
-    let baseRate = 2200;
-    let prevMA = 2200;
+    const baseRates: Record<string, number> = {
+      May: 2150,
+      Jun: 2280,
+      Jul: 2340,
+      Aug: 2420,
+      Sep: 2510,
+      Oct: 2605,
+    };
 
-    const data = timeline.map((item, index) => {
-      const recorded = map.get(item.month);
-      const volume = recorded ? recorded.count : Math.floor(Math.random() * 4) + 2;
-      const totalVal = recorded ? recorded.totalVal : volume * 2800000;
+    let runningSum = 0;
+    const data = timeline.map((item, idx) => {
+      const mData = map.get(item.month) || { totalVal: 0, count: 0 };
+      const volume = mData.count > 0 ? mData.count * 2 + 3 : (idx + 1) * 3 + 2;
+      const landRate = baseRates[item.month] || 2200 + idx * 75;
 
-      baseRate += Math.floor(Math.random() * 120) + 40;
-      const rate = Math.round(baseRate);
-
-      const ma = Math.round(prevMA * 0.6 + rate * 0.4);
-      prevMA = ma;
+      runningSum += landRate;
+      const ma3 = idx >= 2 ? Math.round(runningSum / (idx + 1)) : landRate;
 
       return {
         month: item.month,
-        landRate: rate,
-        movingAvg: ma,
-        volume: volume,
-        totalValLakhs: Math.round((totalVal / 100000) * 10) / 10,
-        rateChange: `+${((index + 1) * 2.4).toFixed(1)}%`,
+        landRate,
+        movingAvg: ma3,
+        volume,
+        deals: mData.count,
       };
     });
 
@@ -86,30 +90,34 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
   const growthPct = (((latestRate - startRate) / startRate) * 100).toFixed(1);
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950 text-slate-100 p-6 shadow-2xl flex flex-col justify-between h-full font-sans">
+    <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs flex flex-col justify-between h-full font-sans">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <CandlestickChart className="h-5 w-5 text-emerald-400" />
-            <h3 className="text-lg font-bold tracking-tight text-slate-100">Land Valuation Velocity</h3>
-            <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              TRRA / INR
-            </span>
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            <CandlestickChart className="h-5 w-5" />
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Average land rate index (₹/sq.ft) & monthly plot trading volume
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold tracking-tight text-foreground">Land Valuation Velocity</h3>
+              <span className="text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                TRRA Index
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Average land rate index (₹/sq.ft) & monthly plot trading volume
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Current Land Rate</p>
-            <p className="text-xl font-mono font-extrabold text-emerald-400">
-              ₹{latestRate.toLocaleString("en-IN")}<span className="text-xs font-normal text-slate-400">/sq.ft</span>
+            <p className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground">Current Land Rate</p>
+            <p className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400">
+              ₹{latestRate.toLocaleString("en-IN")}<span className="text-xs font-normal text-muted-foreground">/sq.ft</span>
             </p>
           </div>
 
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/30">
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-500/30">
             <ArrowUpRight className="size-4" />
             +{growthPct}% YoY
           </div>
@@ -118,8 +126,8 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
             variant="ghost"
             size="sm"
             onClick={() => setShowMA(!showMA)}
-            className={`h-8 px-2 text-xs font-mono border ${
-              showMA ? "bg-slate-800 border-slate-700 text-slate-200" : "bg-transparent border-slate-800 text-slate-500"
+            className={`h-8 px-2 text-xs border ${
+              showMA ? "bg-muted border-border text-foreground" : "bg-transparent border-border/50 text-muted-foreground"
             }`}
           >
             <Sliders className="size-3.5 mr-1" /> MA Line
@@ -132,25 +140,26 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="neonEmerald" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="month" stroke="#64748b" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
-            <YAxis yAxisId="rate" orientation="left" domain={["dataMin - 100", "dataMax + 100"]} stroke="#64748b" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#10b981" }} tickFormatter={(val) => `₹${val}`} />
-            <YAxis yAxisId="volume" orientation="right" domain={[0, "dataMax + 2"]} stroke="#64748b" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#6366f1" }} tickFormatter={(val) => `${val} Plot`} />
-            
+            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.1} vertical={false} />
+            <XAxis dataKey="month" stroke="currentColor" opacity={0.5} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+            <YAxis yAxisId="left" stroke="currentColor" opacity={0.5} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${v}`} />
+            <YAxis yAxisId="right" orientation="right" stroke="currentColor" opacity={0.3} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+
             <Tooltip
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   const d = payload[0].payload;
                   return (
-                    <div className="rounded-xl border border-slate-800 bg-slate-900/95 backdrop-blur-md p-3 shadow-2xl text-xs space-y-1 font-mono">
-                      <p className="font-bold text-slate-300">{d.month} 2026 Telemetry</p>
-                      <p className="text-emerald-400 font-bold">Rate: ₹{d.landRate}/sq.ft ({d.rateChange})</p>
-                      <p className="text-indigo-400 font-medium">Traded Volume: {d.volume} Plots</p>
-                      <p className="text-amber-400 font-medium">Value: ₹{d.totalValLakhs} Lakhs</p>
+                    <div className="rounded-xl border border-border bg-card p-3 shadow-lg text-xs space-y-1 font-sans">
+                      <p className="font-bold text-foreground">{d.month} Land Telemetry</p>
+                      <p className="text-emerald-600 font-bold">Land Rate: ₹{d.landRate}/sq.ft</p>
+
+                      {showMA && <p className="text-amber-500">3-Mo Moving Avg: ₹{d.movingAvg}/sq.ft</p>}
+                      <p className="text-muted-foreground">Plot Transactions: {d.deals} deals ({d.volume} units volume)</p>
                     </div>
                   );
                 }
@@ -158,19 +167,23 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
               }}
             />
 
-            <Bar yAxisId="volume" dataKey="volume" fill="#6366f1" opacity={0.6} radius={[4, 4, 0, 0]} maxBarSize={30} />
-            <Area yAxisId="rate" type="monotone" dataKey="landRate" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#neonEmerald)" />
+            {/* Trading Volume Bars (Subtle Background Bars) */}
+            <Bar yAxisId="right" dataKey="volume" fill="#10b981" opacity={0.15} radius={[4, 4, 0, 0]} />
+
+            {/* Price Area */}
+            <Area yAxisId="left" type="monotone" dataKey="landRate" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#neonEmerald)" />
+
+            {/* Moving Average Line */}
             {showMA && (
-              <Line yAxisId="rate" type="monotone" dataKey="movingAvg" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+              <Line yAxisId="left" type="monotone" dataKey="movingAvg" stroke="#f59e0b" strokeWidth={2} strokeDasharray="4 4" dot={false} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Land Appreciation (₹/sq.ft)</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-indigo-500" /> Trading Volume (Plots)</span>
-        {showMA && <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" /> Moving Avg (EMA)</span>}
+      <div className="pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground font-medium">
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Land Price Index (₹/sq.ft)</span>
+        {showMA && <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> 3-Month Moving Average</span>}
       </div>
     </div>
   );
