@@ -55,8 +55,9 @@ function AuthPage() {
 
         <div className="relative z-10 flex flex-col justify-between w-full p-12 text-white">
           <div className="flex items-center justify-between">
-            <Link to="/" className="text-2xl font-semibold tracking-tight text-white hover:text-terracotta transition-colors">
-              Terra
+            <Link to="/" className="inline-flex items-center gap-3 text-2xl font-bold tracking-tight text-white hover:text-terracotta transition-colors group">
+              <img src="/logo.png" alt="Terra Logo" className="size-9 rounded-xl object-cover border border-white/20 shadow-lg group-hover:scale-105 transition-transform" />
+              <span>Terra</span>
             </Link>
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-mono tracking-widest text-white/90">
               <Sparkles className="size-3.5 text-terracotta" />
@@ -77,7 +78,7 @@ function AuthPage() {
 
             {/* Quote Pill */}
             <div className="mt-4 flex items-center gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15">
-              <div className="flex items-center justify-center size-10 rounded-full bg-terracotta/20 text-terracotta border border-terracotta/30">
+              <div className="flex items-center justify-center size-10 rounded-full bg-terracotta/20 text-terracotta border border-terracotta/30 shrink-0">
                 <ShieldCheck className="size-5" />
               </div>
               <div className="flex flex-col">
@@ -97,8 +98,9 @@ function AuthPage() {
       {/* RIGHT AUTH FORM PANEL */}
       <div className="lg:col-span-5 flex flex-col justify-between p-6 sm:p-12 xl:p-16 relative bg-background">
         <div className="flex items-center justify-between w-full">
-          <Link to="/" className="lg:hidden text-2xl font-semibold text-foreground">
-            Terra
+          <Link to="/" className="lg:hidden inline-flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <img src="/logo.png" alt="Terra Logo" className="size-7 rounded-lg object-cover border border-border/50" />
+            <span>Terra</span>
           </Link>
           <Link 
             to="/" 
@@ -110,13 +112,26 @@ function AuthPage() {
         </div>
 
         <div className="w-full max-w-md mx-auto my-auto py-12">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-terracotta">
-              Portal Authentication
-            </span>
-            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
-              Welcome Back
-            </h1>
+          {/* Logo Badge & Header */}
+          <div className="flex flex-col gap-4 mb-2">
+            <div className="flex items-center gap-3.5">
+              <div className="relative group">
+                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-terracotta to-amber-500 blur-md opacity-30 group-hover:opacity-60 transition duration-500" />
+                <img
+                  src="/logo.png"
+                  alt="Terra Logo"
+                  className="relative size-14 rounded-2xl object-cover border-2 border-border/80 shadow-md group-hover:scale-105 transition-transform"
+                />
+              </div>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-[0.25em] text-terracotta block">
+                  Portal Authentication
+                </span>
+                <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
+                  Welcome Back
+                </h1>
+              </div>
+            </div>
             <p className="text-sm text-muted-foreground">
               Sign in to manage your land developments and client inquiries.
             </p>

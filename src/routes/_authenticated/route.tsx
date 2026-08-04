@@ -110,8 +110,8 @@ function AuthedLayout() {
 
         <div className="p-6 border-b border-border/50 flex items-center justify-between">
           <div>
-            <Link to="/dashboard" className="inline-flex items-center gap-2 text-display text-2xl font-bold text-ink dark:text-foreground group">
-              <span className="h-2 w-2 rounded-full bg-terracotta group-hover:scale-125 transition-transform" />
+            <Link to="/dashboard" className="inline-flex items-center gap-2.5 text-display text-2xl font-bold text-ink dark:text-foreground group">
+              <img src="/logo.png" alt="Terra Logo" className="h-7 w-7 rounded-lg object-cover shadow-2xs border border-border/60 group-hover:scale-105 transition-transform" />
               Terra
             </Link>
             <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-medium">

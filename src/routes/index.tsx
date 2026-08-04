@@ -86,8 +86,8 @@ function FadeIn({
       ref={domRef}
       style={{ transitionDelay: `${delay}ms` }}
       className={`transition-all duration-700 ease-out ${isVisible
-          ? "opacity-100 translate-x-0 translate-y-0"
-          : `opacity-0 ${translateClasses[direction]}`
+        ? "opacity-100 translate-x-0 translate-y-0"
+        : `opacity-0 ${translateClasses[direction]}`
         } ${className}`}
     >
       {children}
@@ -366,11 +366,185 @@ function ParallaxContactSection({
   );
 }
 
+function CanvasHeroVideo({
+  heroWrapRef,
+}: {
+  heroWrapRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imagesRef = useRef<HTMLImageElement[]>([]);
+  const [, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    let canceled = false;
+    const totalFrames = 300;
+    const loadedImages: HTMLImageElement[] = new Array(totalFrames);
+    let loadedCount = 0;
+
+    // Load first frame immediately for instant display
+    const img1 = new Image();
+    img1.src = `/hero/ezgif-frame-001.jpg`;
+    img1.onload = () => {
+      if (canceled) return;
+      loadedImages[0] = img1;
+      imagesRef.current = loadedImages;
+      setIsLoaded(true);
+    };
+
+    // Preload remaining frames
+    for (let i = 1; i <= totalFrames; i++) {
+      const img = new Image();
+      const frameNum = String(i).padStart(3, "0");
+      img.src = `/hero/ezgif-frame-${frameNum}.jpg`;
+      img.onload = () => {
+        if (canceled) return;
+        loadedImages[i - 1] = img;
+        loadedCount++;
+        if (loadedCount % 10 === 0) {
+          imagesRef.current = [...loadedImages];
+        }
+      };
+    }
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const wrap = heroWrapRef.current;
+    if (!canvas || !wrap) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let rafId: number;
+
+    const render = () => {
+      const rect = wrap.getBoundingClientRect();
+      const total = wrap.offsetHeight - window.innerHeight;
+      const progress = Math.min(1, Math.max(0, -rect.top / Math.max(1, total)));
+
+      if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+
+      const imgs = imagesRef.current;
+      const totalFrames = 300;
+      const frameIndex = Math.min(
+        totalFrames - 1,
+        Math.max(0, Math.floor(progress * totalFrames))
+      );
+
+      // Find nearest loaded frame if current frame is downloading
+      let img = imgs[frameIndex];
+      if (!img || !img.complete || img.naturalWidth === 0) {
+        for (let offset = 1; offset < 30; offset++) {
+          const prev = imgs[Math.max(0, frameIndex - offset)];
+          if (prev && prev.complete && prev.naturalWidth > 0) {
+            img = prev;
+            break;
+          }
+          const next = imgs[Math.min(totalFrames - 1, frameIndex + offset)];
+          if (next && next.complete && next.naturalWidth > 0) {
+            img = next;
+            break;
+          }
+        }
+      }
+
+      if (img && img.complete && img.naturalWidth > 0) {
+        const hRatio = canvas.width / img.naturalWidth;
+        const vRatio = canvas.height / img.naturalHeight;
+        const ratio = Math.max(hRatio, vRatio);
+        const centerShiftX = (canvas.width - img.naturalWidth * ratio) / 2;
+        const centerShiftY = (canvas.height - img.naturalHeight * ratio) / 2;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(
+          img,
+          0,
+          0,
+          img.naturalWidth,
+          img.naturalHeight,
+          centerShiftX,
+          centerShiftY,
+          img.naturalWidth * ratio,
+          img.naturalHeight * ratio
+        );
+      }
+
+      rafId = requestAnimationFrame(render);
+    };
+
+    rafId = requestAnimationFrame(render);
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [heroWrapRef]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 w-full h-full object-cover"
+    />
+  );
+}
+
+const heroChapters = [
+  {
+    badge: "Terra Premium Land Developments",
+    title: "Discover Plots with a Soul",
+    subtitle: "Sanctuaries designed for modern living & everlasting peace.",
+    buttons: [
+      { text: "View Properties", href: "#properties", primary: true },
+      { text: "Book a Tour", href: "#contact", primary: false },
+    ],
+  },
+  {
+    badge: "Master-Planned Excellence",
+    title: "Prime Locations, Pure Nature",
+    subtitle: "Seamlessly integrated infrastructure with panoramic aerial vistas.",
+    buttons: [
+      { text: "Explore Layouts", href: "#properties", primary: true },
+      { text: "Our Vision", href: "#about", primary: false },
+    ],
+  },
+  {
+    badge: "Your Future Heritage",
+    title: "Build Your Signature Vision",
+    subtitle: "Exclusive plotted parcels ready for custom luxury construction.",
+    buttons: [
+      { text: "Book a Private Tour", href: "#contact", primary: true },
+      { text: "Sign In", href: "/auth", primary: false },
+    ],
+  },
+];
+
 function Index() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const heroWrapRef = useRef<HTMLDivElement>(null);
-  const [scrollLen, setScrollLen] = useState(3000);
+  const [scrollLen] = useState(3000);
+  const [scrollProgress, setScrollProgress] = useState(0);
+
+  useEffect(() => {
+    const wrap = heroWrapRef.current;
+    if (!wrap) return;
+
+    const handleScroll = () => {
+      const rect = wrap.getBoundingClientRect();
+      const total = wrap.offsetHeight - window.innerHeight;
+      const progress = Math.min(1, Math.max(0, -rect.top / Math.max(1, total)));
+      setScrollProgress(progress);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     const lenis = new Lenis({
@@ -450,62 +624,6 @@ function Index() {
     },
   });
 
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const onMeta = () => {
-      // 600px of scroll per second of video, min 2000
-      setScrollLen(Math.max(2000, Math.round(v.duration * 600)));
-    };
-    if (v.readyState >= 1) onMeta();
-    else v.addEventListener("loadedmetadata", onMeta);
-    return () => v.removeEventListener("loadedmetadata", onMeta);
-  }, []);
-
-  useEffect(() => {
-    const v = videoRef.current;
-    const wrap = heroWrapRef.current;
-    if (!v || !wrap) return;
-    let raf = 0;
-    let targetTime = 0;
-    let seeking = false;
-
-    const seekToTarget = () => {
-      if (seeking || !Number.isFinite(v.duration)) return;
-      // Avoid decoding a new frame when the current frame is already close enough.
-      if (Math.abs(v.currentTime - targetTime) < 0.04) return;
-      seeking = true;
-      v.currentTime = targetTime;
-    };
-
-    const tick = () => {
-      raf = 0;
-      const rect = wrap.getBoundingClientRect();
-      const total = wrap.offsetHeight - window.innerHeight;
-      const progress = Math.min(1, Math.max(0, -rect.top / Math.max(1, total)));
-      if (v.duration && !isNaN(v.duration)) {
-        targetTime = progress * v.duration;
-        seekToTarget();
-      }
-    };
-    const onSeeked = () => {
-      seeking = false;
-      // Catch up to the latest scroll position, but never queue concurrent seeks.
-      seekToTarget();
-    };
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(tick);
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    v.addEventListener("seeked", onSeeked);
-    tick();
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      v.removeEventListener("seeked", onSeeked);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [scrollLen]);
-
   return (
     <div className="relative bg-background text-foreground">
       {/* NAV */}
@@ -522,57 +640,60 @@ function Index() {
             </Link>
             <a href="#contact" className="flex items-center justify-center h-9 px-3 sm:px-5 text-xs sm:text-sm rounded primary-button hover:opacity-90 whitespace-nowrap">Book a Tour</a>
             <button
-              onClick={() => setMenuOpen((o) => !o)}
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="group relative flex flex-col justify-center items-center w-9 h-9 gap-1 z-[1100] text-white hover:opacity-80 transition-opacity"
               aria-label="Toggle menu"
-              className="relative flex items-center justify-center size-9 rounded primary-button z-[1200] cursor-pointer shrink-0"
             >
-              <span className={`absolute w-3.5 h-px bg-primary-cta-text transition-transform duration-300 ${menuOpen ? "rotate-45" : "-translate-y-1"}`} />
-              <span className={`absolute w-3.5 h-px bg-primary-cta-text transition-transform duration-300 ${menuOpen ? "-rotate-45" : "translate-y-1"}`} />
+              <span className={`w-5 h-0.5 bg-current transition-transform duration-300 ${menuOpen ? "rotate-45 translate-y-1.5" : ""}`} />
+              <span className={`w-5 h-0.5 bg-current transition-opacity duration-300 ${menuOpen ? "opacity-0" : ""}`} />
+              <span className={`w-5 h-0.5 bg-current transition-transform duration-300 ${menuOpen ? "-rotate-45 -translate-y-1.5" : ""}`} />
             </button>
           </div>
         </div>
         <div
-          className={`fixed inset-0 h-screen w-screen flex flex-col items-center justify-center bg-foreground transition-all duration-700 ease-[cubic-bezier(0.9,0,0.1,1)] ${
-            menuOpen ? "pointer-events-auto opacity-100 z-[1050]" : "pointer-events-none opacity-0 z-[-1]"
-          }`}
+          className={`fixed inset-0 h-screen w-screen flex flex-col items-center justify-center bg-foreground transition-all duration-700 ease-[cubic-bezier(0.9,0,0.1,1)] ${menuOpen ? "pointer-events-auto opacity-100 z-[1050]" : "pointer-events-none opacity-0 z-[-1]"
+            }`}
           style={{ clipPath: menuOpen ? "polygon(0 0,100% 0,100% 100%,0 100%)" : "polygon(0 0,100% 0,100% 0,0 0)" }}
         >
           <div className="flex flex-col items-center w-full max-w-3xl px-6 sm:px-8">
-            {[
-              { label: "Properties", href: "#properties" },
-              { label: "About", href: "#about" },
-              { label: "Contact", href: "#contact" },
-            ].map((l) => (
-              <div key={l.label} className="w-full overflow-hidden">
-                <a
-                  href={l.href}
-                  onClick={() => setMenuOpen(false)}
-                  className="group flex items-center justify-between gap-4 py-3 sm:py-4"
-                >
-                  <span className="text-4xl sm:text-7xl md:text-9xl font-medium text-background group-hover:ml-4 transition-[margin] duration-300">
-                    {l.label}
-                  </span>
-                  <ArrowUpRight
-                    strokeWidth={1.5}
-                    className="h-[0.8em] w-auto text-background group-hover:rotate-45 group-hover:mr-4 transition-all duration-300 shrink-0"
-                    style={{ fontSize: "clamp(2rem,6vw,8rem)" }}
-                  />
-                </a>
-                <div className="h-px bg-background/20" />
-              </div>
-            ))}
-            <div className="w-full overflow-hidden">
-              <Link
-                to="/auth"
+            <div className="flex flex-col items-center gap-4 sm:gap-6 text-center">
+              <a
+                href="#hero"
                 onClick={() => setMenuOpen(false)}
-                className="group flex items-center justify-between gap-4 py-3 sm:py-4"
+                className="text-3xl sm:text-5xl font-medium text-background hover:opacity-75 transition-opacity"
               >
-                <span className="text-4xl sm:text-7xl md:text-9xl font-medium text-background group-hover:ml-4 transition-[margin] duration-300">
-                  Log In
-                </span>
-                <ArrowUpRight
-                  strokeWidth={1.5}
-                  className="h-[0.8em] w-auto text-background group-hover:rotate-45 group-hover:mr-4 transition-all duration-300 shrink-0"
+                Home
+              </a>
+              <a
+                href="#properties"
+                onClick={() => setMenuOpen(false)}
+                className="text-3xl sm:text-5xl font-medium text-background hover:opacity-75 transition-opacity"
+              >
+                Properties
+              </a>
+              <a
+                href="#about"
+                onClick={() => setMenuOpen(false)}
+                className="text-3xl sm:text-5xl font-medium text-background hover:opacity-75 transition-opacity"
+              >
+                About
+              </a>
+              <a
+                href="#contact"
+                onClick={() => setMenuOpen(false)}
+                className="text-3xl sm:text-5xl font-medium text-background hover:opacity-75 transition-opacity"
+              >
+                Contact
+              </a>
+            </div>
+            <div className="w-full mt-12 pt-8 border-t border-background/20 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-background/60">
+              <Link
+                to="/"
+                onClick={() => setMenuOpen(false)}
+                className="hover:opacity-100 transition-opacity"
+              >
+                <div
+                  className="font-medium text-background tracking-tighter uppercase"
                   style={{ fontSize: "clamp(2rem,6vw,8rem)" }}
                 />
               </Link>
@@ -583,41 +704,76 @@ function Index() {
       </nav>
 
       <main>
-        {/* HERO — scroll-scrubbed video (UNTOUCHED) */}
+        {/* HERO — scroll-scrubbed video canvas */}
         <div id="hero" ref={heroWrapRef} className="relative bg-black" style={{ height: `${scrollLen}px` }}>
           <section className="sticky top-0 overflow-hidden flex flex-col justify-between w-full h-screen bg-black">
-            <video
-              ref={videoRef}
-              src={`${ASSET}/hero/hero.mp4`}
-              muted
-              playsInline
-              preload="auto"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/20" aria-hidden />
-            <div className="relative z-10 w-content-width mx-auto pt-28 sm:pt-32">
-              <div className="flex flex-col gap-3 w-full md:w-6/10 lg:w-1/2 xl:w-[45%] 2xl:w-4/10">
-                <div className="w-fit px-3 py-1 mb-1 text-xs sm:text-sm bg-card/90 text-card-foreground rounded">
-                  Terra Premium Land Developments
-                </div>
-                <h1 className="text-4xl sm:text-6xl md:text-7xl 2xl:text-8xl leading-[1.15] font-semibold text-white text-balance">
-                  Discover Plots with a Soul
-                </h1>
-                <p className="text-lg md:text-xl text-white leading-snug text-balance">
-                  Premium residential plots and quality construction
-                </p>
-                <div className="flex flex-wrap gap-3 mt-2 md:mt-3">
-                  <a href="#properties" className="flex items-center justify-center h-10 px-6 text-sm rounded primary-button hover:opacity-90">
-                    View Properties
-                  </a>
-                  <a href="#contact" className="flex items-center justify-center h-10 px-6 text-sm rounded secondary-button hover:opacity-90">
-                    Book a Tour
-                  </a>
-                </div>
+            <CanvasHeroVideo heroWrapRef={heroWrapRef} />
+
+            {/* Soft subtle top & bottom gradient for nav & footer legibility */}
+            <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/70 via-black/30 to-transparent pointer-events-none" aria-hidden />
+            <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" aria-hidden />
+
+            <div className="relative z-10 w-content-width mx-auto pt-24 sm:pt-28 flex-1 flex flex-col justify-center">
+              <div className="relative w-full md:w-7/10 lg:w-6/10 xl:w-[54%] 2xl:w-4/10 min-h-[320px]">
+                {heroChapters.map((chapter, idx) => {
+                  const start = idx / heroChapters.length;
+                  const end = (idx + 1) / heroChapters.length;
+                  const mid = (start + end) / 2;
+
+                  let opacity = 0;
+                  if (idx === 0 && scrollProgress < 0.28) {
+                    opacity = 1 - Math.max(0, (scrollProgress - 0.18) / 0.10);
+                  } else if (idx === heroChapters.length - 1 && scrollProgress > 0.65) {
+                    opacity = Math.min(1, (scrollProgress - 0.65) / 0.12);
+                  } else {
+                    const dist = Math.abs(scrollProgress - mid);
+                    const maxDist = 0.18;
+                    opacity = Math.max(0, 1 - dist / maxDist);
+                  }
+
+                  const active = opacity > 0.05;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex flex-col gap-3 transition-all duration-500 ease-out ${
+                        active ? "pointer-events-auto" : "pointer-events-none"
+                      } ${idx === 0 ? "relative" : "absolute inset-0"}`}
+                      style={{
+                        opacity,
+                        transform: `translateY(${(1 - opacity) * 16}px)`,
+                      }}
+                    >
+                      <div className="w-fit px-3 py-1 mb-1 text-xs sm:text-sm bg-card/90 text-card-foreground rounded shadow-sm">
+                        {chapter.badge}
+                      </div>
+                      <h1 className="text-4xl sm:text-6xl md:text-7xl 2xl:text-8xl leading-[1.15] font-semibold text-white text-balance drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)]">
+                        {chapter.title}
+                      </h1>
+                      <p className="text-lg md:text-xl text-white leading-snug text-balance drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
+                        {chapter.subtitle}
+                      </p>
+                      <div className="flex flex-wrap gap-3 mt-2 md:mt-3">
+                        {chapter.buttons.map((btn) => (
+                          <a
+                            key={btn.text}
+                            href={btn.href}
+                            className={`flex items-center justify-center h-10 px-6 text-sm rounded ${
+                              btn.primary ? "primary-button" : "secondary-button"
+                            } hover:opacity-90`}
+                          >
+                            {btn.text}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-            <div className="relative z-10 flex justify-end mx-auto pb-8 w-content-width">
-              <p className="md:max-w-1/2 2xl:max-w-4/10 text-sm md:text-base uppercase tracking-wide leading-normal text-balance text-end text-white/75">
+
+            <div className="relative z-10 flex justify-end items-end mx-auto pb-8 w-content-width">
+              <p className="md:max-w-1/2 2xl:max-w-4/10 text-xs md:text-sm uppercase tracking-wide leading-relaxed text-balance text-end text-white/90 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
                 An independent land development studio crafting untamed, soulful spaces for those seeking a different rhythm. A product by HAEGL technologies.
               </p>
             </div>
