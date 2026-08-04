@@ -450,7 +450,7 @@ export function AnalyticsDashboard() {
       {activeTab === "market" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <MarketVelocityChart bookings={bookings} />
+            <MarketVelocityChart plots={rawPlots} bookings={bookings} />
             <MarketOrderBookWidget plots={rawPlots} leads={rawLeads} />
           </div>
         </div>
