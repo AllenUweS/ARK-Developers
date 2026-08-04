@@ -32,7 +32,6 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
       if (isNaN(date.getTime())) return;
 
       const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      const label = date.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
 
       if (!monthlyMap.has(yearMonth)) {
         monthlyMap.set(yearMonth, { collected: 0, committed: 0, count: 0 });
@@ -44,48 +43,72 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
       curr.count += 1;
     });
 
-    // Convert map to array and sort chronologically
-    const result = Array.from(monthlyMap.entries())
+    // Sort chronologically
+    const sortedEntries = Array.from(monthlyMap.entries())
       .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-      .slice(-8)
-      .map(([key, data]) => {
-        const [year, month] = key.split("-");
-        const d = new Date(Number(year), Number(month) - 1, 1);
-        return {
-          month: d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
-          collected: Math.round(data.collected / 100000 * 100) / 100, // Lakhs
-          committed: Math.round(data.committed / 100000 * 100) / 100, // Lakhs
-          rawCollected: data.collected,
-          rawCommitted: data.committed,
-          count: data.count,
-        };
-      });
+      .slice(-8);
+
+    // Compute cumulative running totals for a smooth upward revenue realization curve
+    let runningCollected = 0;
+    let runningCommitted = 0;
+
+    const result = sortedEntries.map(([key, data]) => {
+      const [year, month] = key.split("-");
+      const d = new Date(Number(year), Number(month) - 1, 1);
+
+      runningCollected += data.collected;
+      runningCommitted += data.committed;
+
+      const collectedLakhs = Math.round((runningCollected / 100000) * 10) / 10;
+      const committedLakhs = Math.round((runningCommitted / 100000) * 10) / 10;
+
+      return {
+        month: d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
+        collected: collectedLakhs,
+        committed: committedLakhs,
+        rawCollected: runningCollected,
+        rawCommitted: runningCommitted,
+        monthCollected: data.collected,
+        monthCommitted: data.committed,
+        count: data.count,
+      };
+    });
 
     return result;
   }, [bookings]);
 
-  const totalCollectedLakhs = chartData.reduce((acc, curr) => acc + curr.collected, 0);
+  const rawTotalCollected = chartData.length > 0 ? chartData[chartData.length - 1].rawCollected : 0;
+
+  const formatHeaderCurrency = (val: number) => {
+    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)} Cr`;
+    if (val >= 100000) return `₹${(val / 100000).toFixed(1)} Lakhs`;
+    return `₹${val.toLocaleString("en-IN")}`;
+  };
+
+  const formatYAxisTick = (val: number) => {
+    if (val >= 100) return `₹${(val / 100).toFixed(1)}Cr`;
+    return `₹${val}L`;
+  };
 
   return (
-    <div className="rounded-2xl border border-border/70 bg-card/75 backdrop-blur-xl p-6 shadow-xs flex flex-col justify-between">
+    <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs flex flex-col justify-between h-full font-sans">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-terracotta animate-pulse" />
-            <h3 className="text-lg font-bold tracking-tight text-foreground">Revenue & Collections Trend</h3>
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-terracotta/10 text-terracotta border border-terracotta/20">
+            <TrendingUp className="h-5 w-5" />
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Cash collected vs committed deal value over recent months
-          </p>
+          <div>
+            <h3 className="text-lg font-bold tracking-tight text-foreground">Cumulative Revenue Growth Trend</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Cumulative cash collected vs committed deal value growth over time
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground">Recent Collections</p>
-            <p className="text-base font-extrabold text-terracotta">₹{totalCollectedLakhs.toFixed(1)} Lakhs</p>
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-terracotta/10 text-terracotta border border-terracotta/20">
-            <TrendingUp className="h-5 w-5" />
+            <p className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground">Total Cash Realized</p>
+            <p className="text-lg font-extrabold text-terracotta">{formatHeaderCurrency(rawTotalCollected)}</p>
           </div>
         </div>
       </div>
@@ -93,7 +116,7 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
       <div className="h-72 w-full pt-2">
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 15, left: 10, bottom: 0 }}>
               <defs>
                 <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#e05638" stopOpacity={0.4} />
@@ -105,7 +128,7 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
                 </linearGradient>
               </defs>
 
-              <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" opacity={0.12} vertical={false} />
               <XAxis
                 dataKey="month"
                 tickLine={false}
@@ -113,9 +136,10 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
                 tick={{ fontSize: 11, fill: "currentColor", opacity: 0.6 }}
               />
               <YAxis
+                width={65}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v) => `₹${v}L`}
+                tickFormatter={formatYAxisTick}
                 tick={{ fontSize: 11, fill: "currentColor", opacity: 0.6 }}
               />
               <Tooltip
@@ -123,17 +147,20 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="rounded-xl border border-border/80 bg-card/95 backdrop-blur-md p-3 shadow-xl text-xs space-y-1.5">
-                        <p className="font-bold text-foreground border-b pb-1">{label}</p>
-                        <div className="flex items-center justify-between gap-4 text-emerald-600 dark:text-emerald-400">
-                          <span>Collected:</span>
-                          <span className="font-bold">₹{Number(data.rawCollected).toLocaleString("en-IN")}</span>
+                      <div className="rounded-xl border border-border bg-card p-3.5 shadow-lg text-xs space-y-2">
+                        <p className="font-bold text-foreground border-b pb-1.5">{label} Revenue Realization</p>
+                        <div className="flex items-center justify-between gap-6 text-terracotta">
+                          <span className="font-medium">Cumulative Cash Realized:</span>
+                          <span className="font-bold">{formatHeaderCurrency(data.rawCollected)}</span>
                         </div>
-                        <div className="flex items-center justify-between gap-4 text-amber-600 dark:text-amber-400">
-                          <span>Committed Value:</span>
-                          <span className="font-bold">₹{Number(data.rawCommitted).toLocaleString("en-IN")}</span>
+                        <div className="flex items-center justify-between gap-6 text-amber-600 dark:text-amber-400">
+                          <span className="font-medium">Cumulative Committed Value:</span>
+                          <span className="font-bold">{formatHeaderCurrency(data.rawCommitted)}</span>
                         </div>
-                        <p className="text-[10px] text-muted-foreground pt-1">{data.count} booking(s)</p>
+                        <div className="pt-1 border-t text-[10px] text-muted-foreground flex justify-between">
+                          <span>Month's Inflow: {formatHeaderCurrency(data.monthCollected)}</span>
+                          <span>{data.count} booking(s)</span>
+                        </div>
                       </div>
                     );
                   }
@@ -144,7 +171,7 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
               <Area
                 type="monotone"
                 dataKey="committed"
-                name="Committed (Lakhs)"
+                name="Committed Value"
                 stroke="#f59e0b"
                 strokeWidth={2}
                 fillOpacity={1}
@@ -153,7 +180,7 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
               <Area
                 type="monotone"
                 dataKey="collected"
-                name="Collected (Lakhs)"
+                name="Cash Realized"
                 stroke="#e05638"
                 strokeWidth={3}
                 fillOpacity={1}
@@ -168,16 +195,16 @@ export function RevenueChart({ bookings }: RevenueChartProps) {
         )}
       </div>
 
-      <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
+      <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5 font-medium">
-            <span className="h-2.5 w-2.5 rounded-sm bg-terracotta inline-block" /> Cash Collected
+            <span className="h-2.5 w-2.5 rounded-sm bg-terracotta inline-block" /> Cumulative Cash Realized
           </span>
           <span className="flex items-center gap-1.5 font-medium">
-            <span className="h-2.5 w-2.5 rounded-sm bg-amber-500 inline-block" /> Committed Value
+            <span className="h-2.5 w-2.5 rounded-sm bg-amber-500 inline-block" /> Cumulative Committed Value
           </span>
         </div>
-        <span className="text-[11px]">Real-time revenue telemetry</span>
+        <span className="text-[11px] font-semibold text-terracotta">Growth Telemetry</span>
       </div>
     </div>
   );
