@@ -137,7 +137,7 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
 
       <div className="h-64 w-full pt-2">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 10, right: 15, left: 10, bottom: 0 }}>
             <defs>
               <linearGradient id="neonEmerald" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
@@ -146,8 +146,18 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.1} vertical={false} />
             <XAxis dataKey="month" stroke="currentColor" opacity={0.5} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-            <YAxis yAxisId="left" stroke="currentColor" opacity={0.5} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${v}`} />
-            <YAxis yAxisId="right" orientation="right" stroke="currentColor" opacity={0.3} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+            <YAxis
+              yAxisId="left"
+              domain={["dataMin - 150", "dataMax + 100"]}
+              width={55}
+              stroke="currentColor"
+              opacity={0.5}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v) => `₹${Math.round(v)}`}
+            />
+            <YAxis yAxisId="right" orientation="right" width={30} stroke="currentColor" opacity={0.3} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
 
             <Tooltip
               content={({ active, payload }) => {
