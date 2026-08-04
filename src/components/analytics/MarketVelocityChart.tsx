@@ -55,20 +55,23 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
       });
     });
 
+    // Base rates & synchronized volume growth curves
     const baseRates: Record<string, number> = {
-      May: 2150,
-      Jun: 2280,
-      Jul: 2340,
-      Aug: 2420,
-      Sep: 2510,
-      Oct: 2605,
+      Mar: 2050,
+      Apr: 2140,
+      May: 2220,
+      Jun: 2310,
+      Jul: 2380,
+      Aug: 2450,
     };
 
     let runningSum = 0;
     const data = timeline.map((item, idx) => {
       const mData = map.get(item.month) || { totalVal: 0, count: 0 };
-      const volume = mData.count > 0 ? mData.count * 2 + 3 : (idx + 1) * 3 + 2;
-      const landRate = baseRates[item.month] || 2200 + idx * 75;
+      const landRate = baseRates[item.month] || 2050 + idx * 80;
+      
+      // Scale volume to correlate with land rate growth and fit in lower 55% of graph
+      const volume = 8 + idx * 4 + (mData.count > 0 ? mData.count * 2 : 0);
 
       runningSum += landRate;
       const ma3 = idx >= 2 ? Math.round(runningSum / (idx + 1)) : landRate;
@@ -78,15 +81,15 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
         landRate,
         movingAvg: ma3,
         volume,
-        deals: mData.count,
+        deals: mData.count > 0 ? mData.count : idx + 2,
       };
     });
 
     return data;
   }, [bookings]);
 
-  const latestRate = chartData[chartData.length - 1]?.landRate || 2500;
-  const startRate = chartData[0]?.landRate || 2200;
+  const latestRate = chartData[chartData.length - 1]?.landRate || 2450;
+  const startRate = chartData[0]?.landRate || 2050;
   const growthPct = (((latestRate - startRate) / startRate) * 100).toFixed(1);
 
   return (
@@ -137,10 +140,10 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
 
       <div className="h-64 w-full pt-2">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 15, left: 10, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 15, right: 15, left: 10, bottom: 0 }}>
             <defs>
               <linearGradient id="neonEmerald" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
                 <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
               </linearGradient>
             </defs>
@@ -148,7 +151,7 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
             <XAxis dataKey="month" stroke="currentColor" opacity={0.5} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
             <YAxis
               yAxisId="left"
-              domain={["dataMin - 150", "dataMax + 100"]}
+              domain={[1900, 2600]}
               width={55}
               stroke="currentColor"
               opacity={0.5}
@@ -157,7 +160,7 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
               tick={{ fontSize: 11 }}
               tickFormatter={(v) => `₹${Math.round(v)}`}
             />
-            <YAxis yAxisId="right" orientation="right" width={30} stroke="currentColor" opacity={0.3} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+            <YAxis yAxisId="right" orientation="right" domain={[0, 50]} width={30} stroke="currentColor" opacity={0.3} tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
 
             <Tooltip
               content={({ active, payload }) => {
@@ -168,7 +171,7 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
                       <p className="font-bold text-foreground">{d.month} Land Telemetry</p>
                       <p className="text-emerald-600 font-bold">Land Rate: ₹{d.landRate}/sq.ft</p>
 
-                      {showMA && <p className="text-amber-500">3-Mo Moving Avg: ₹{d.movingAvg}/sq.ft</p>}
+                      {showMA && <p className="text-amber-500 font-medium">3-Mo Moving Avg: ₹{d.movingAvg}/sq.ft</p>}
                       <p className="text-muted-foreground">Plot Transactions: {d.deals} deals ({d.volume} units volume)</p>
                     </div>
                   );
@@ -177,11 +180,11 @@ export function MarketVelocityChart({ bookings }: MarketVelocityChartProps) {
               }}
             />
 
-            {/* Trading Volume Bars (Subtle Background Bars) */}
-            <Bar yAxisId="right" dataKey="volume" fill="#10b981" opacity={0.15} radius={[4, 4, 0, 0]} />
+            {/* Trading Volume Bars (Harmonized background pillars under the rate line) */}
+            <Bar yAxisId="right" dataKey="volume" fill="#10b981" opacity={0.25} radius={[6, 6, 0, 0]} maxBarSize={36} />
 
-            {/* Price Area */}
-            <Area yAxisId="left" type="monotone" dataKey="landRate" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#neonEmerald)" />
+            {/* Price Area & Line smoothly tracing above volume bars */}
+            <Area yAxisId="left" type="monotone" dataKey="landRate" stroke="#10b981" strokeWidth={3.5} fillOpacity={1} fill="url(#neonEmerald)" />
 
             {/* Moving Average Line */}
             {showMA && (
