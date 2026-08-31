@@ -345,3 +345,54 @@ ALTER TABLE public.bookings
   ADD COLUMN IF NOT EXISTS agent_name TEXT,
   ADD COLUMN IF NOT EXISTS receipt_number TEXT,
   ADD COLUMN IF NOT EXISTS booking_type TEXT DEFAULT 'Personal';
+
+-- 15. ATOMIC BOOKING DELETION RPC & DELETE POLICIES
+CREATE OR REPLACE FUNCTION public.delete_booking_completely(_booking_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  target_plot_id UUID;
+  deleted_count INT := 0;
+BEGIN
+  SELECT plot_id INTO target_plot_id FROM public.bookings WHERE id = _booking_id;
+  
+  DELETE FROM public.booking_cancellations WHERE booking_id = _booking_id;
+  DELETE FROM public.incentive_disbursals WHERE booking_id = _booking_id;
+  DELETE FROM public.installment_payments WHERE booking_id = _booking_id;
+  DELETE FROM public.booking_installment_schedules WHERE booking_id = _booking_id;
+  DELETE FROM public.incentives WHERE booking_id = _booking_id;
+
+  DELETE FROM public.bookings WHERE id = _booking_id;
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+
+  IF target_plot_id IS NOT NULL THEN
+    UPDATE public.plots 
+    SET status = 'available', selected_lead_id = NULL 
+    WHERE id = target_plot_id;
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'deleted_rows', deleted_count);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.delete_booking_completely(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_booking_completely(UUID) TO service_role;
+
+DROP POLICY IF EXISTS "Authenticated users delete bookings" ON public.bookings;
+CREATE POLICY "Authenticated users delete bookings" ON public.bookings
+  FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated delete installment_payments" ON public.installment_payments;
+CREATE POLICY "Authenticated delete installment_payments" ON public.installment_payments
+  FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated delete booking_schedules" ON public.booking_installment_schedules;
+CREATE POLICY "Authenticated delete booking_schedules" ON public.booking_installment_schedules
+  FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated delete booking_cancellations" ON public.booking_cancellations;
+CREATE POLICY "Authenticated delete booking_cancellations" ON public.booking_cancellations
+  FOR DELETE TO authenticated USING (true);

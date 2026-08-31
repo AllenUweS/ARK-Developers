@@ -257,40 +257,60 @@ function BookingsPage() {
     mutationFn: async (bookingToDelete: any) => {
       if (!bookingToDelete?.id) throw new Error("No booking selected for deletion");
 
-      const st = String(bookingToDelete.status || "").toLowerCase();
-      const isDeletable = st === "cancelled" || st === "cancel" || st === "rejected";
-
-      if (!isDeletable) {
-        throw new Error("This booking cannot be deleted. Bookings must be Cancelled or Rejected before deletion.");
+      // 1. Try atomic RPC first (SECURITY DEFINER automatically cleans FKs and restores plot)
+      try {
+        const { data: rpcRes, error: rpcErr } = await (supabase as any).rpc("delete_booking_completely", {
+          _booking_id: bookingToDelete.id,
+        });
+        if (!rpcErr && rpcRes && rpcRes.success) {
+          return rpcRes;
+        }
+        if (rpcErr) {
+          console.warn("RPC delete_booking_completely notice:", rpcErr);
+        }
+      } catch (rpcEx) {
+        console.warn("RPC delete exception, falling back to direct table operations:", rpcEx);
       }
 
-      // Delete related schedules and payments first
+      // 2. Fallback: Cascading deletion of all sub-records
       try {
+        await (supabase as any).from("booking_cancellations").delete().eq("booking_id", bookingToDelete.id);
+        await (supabase as any).from("incentive_disbursals").delete().eq("booking_id", bookingToDelete.id);
         await (supabase as any).from("installment_payments").delete().eq("booking_id", bookingToDelete.id);
         await (supabase as any).from("booking_installment_schedules").delete().eq("booking_id", bookingToDelete.id);
+        await (supabase as any).from("incentives").delete().eq("booking_id", bookingToDelete.id);
       } catch (err) {
         console.warn("Notice: Sub-record cleanup warning:", err);
       }
 
-      // Delete the main booking record
-      const { error: deleteErr } = await supabase.from("bookings").delete().eq("id", bookingToDelete.id);
+      // 3. Delete the main booking record with verification
+      const { data: deletedRows, error: deleteErr } = await (supabase as any)
+        .from("bookings")
+        .delete()
+        .eq("id", bookingToDelete.id)
+        .select();
+
       if (deleteErr) throw deleteErr;
 
-      // Reset plot status to available if attached
+      // 4. Reset plot status to available if attached
       if (bookingToDelete.plot_id) {
         await (supabase as any)
           .from("plots")
           .update({ status: "available", selected_lead_id: null })
           .eq("id", bookingToDelete.plot_id);
       }
+
+      return { success: true, count: deletedRows?.length };
     },
     onSuccess: () => {
-      toast.success("Booking agreement deleted successfully!");
+      toast.success("Booking agreement permanently deleted!");
       setDrawerOpen(false);
       setDrawerBooking(null);
       qc.invalidateQueries({ queryKey: ["bookings"] });
       qc.invalidateQueries({ queryKey: ["plots"] });
       qc.invalidateQueries({ queryKey: ["all-plots"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["project-stats"] });
     },
     onError: (err: any) => toast.error(err.message || "Could not delete booking"),
   });
@@ -1615,105 +1635,60 @@ function BookingsPage() {
                       </div>
                     </div>
 
-                    {/* Delete Booking Option with Pre-condition Validation */}
-                    {(() => {
-                      const st = String(drawerBooking.status || "").toLowerCase();
-                      const isDeletable = st === "cancelled" || st === "cancel" || st === "rejected";
+                    {/* Delete Booking Option */}
+                    <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs font-extrabold text-rose-700 dark:text-rose-300">
+                        <span className="flex items-center gap-1.5">
+                          <Trash2 className="size-4 text-rose-600" /> Permanent Booking Removal
+                        </span>
+                        <Badge variant="outline" className="text-[10px] font-extrabold bg-rose-500/10 text-rose-600 border-rose-500/30">
+                          {statusConfig[drawerBooking.status]?.label || drawerBooking.status}
+                        </Badge>
+                      </div>
 
-                      return (
-                        <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3 shadow-2xs">
-                          <div className="flex items-center justify-between text-xs font-extrabold text-rose-700 dark:text-rose-300">
-                            <span className="flex items-center gap-1.5">
-                              <Trash2 className="size-4 text-rose-600" /> Permanent Booking Removal
-                            </span>
-                            {isDeletable ? (
-                              <Badge variant="outline" className="text-[10px] font-extrabold bg-rose-500/10 text-rose-600 border-rose-500/30">
-                                Deletable ({statusConfig[drawerBooking.status]?.label || drawerBooking.status})
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px] font-extrabold bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">
-                                Locked
-                              </Badge>
-                            )}
-                          </div>
-
-                          {isDeletable ? (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  disabled={deleteBooking.isPending}
-                                  className="w-full h-10 text-xs font-extrabold gap-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-all hover:scale-101 active:scale-95"
-                                >
-                                  <Trash2 className="size-4" />
-                                  Delete Booking Record
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="rounded-3xl max-w-md">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle className="text-lg font-extrabold text-foreground font-display flex items-center gap-2">
-                                    <Trash2 className="size-5 text-rose-600" /> Delete Booking Agreement?
-                                  </AlertDialogTitle>
-                                  <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed pt-2 space-y-2">
-                                    <p>
-                                      Are you sure you want to permanently delete the booking agreement for{" "}
-                                      <strong className="text-foreground font-bold">{drawerBooking.customer_name}</strong> (Plot #{drawerBooking.plots?.plot_number})?
-                                    </p>
-                                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 text-[11px] font-medium space-y-1">
-                                      <div className="font-bold">⚠️ Consequence of deletion:</div>
-                                      <div>• The plot status will be restored to <strong>Available</strong>.</div>
-                                      <div>• All payment receipts & schedules associated with this booking will be removed.</div>
-                                      <div>• This action cannot be reversed.</div>
-                                    </div>
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter className="pt-2">
-                                  <AlertDialogCancel className="rounded-xl text-xs font-bold">Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteBooking.mutate(drawerBooking)}
-                                    className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl gap-1.5"
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                    Confirm Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          ) : (
-                            <div className="space-y-2">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="w-full">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      disabled
-                                      onClick={() =>
-                                        toast.error("Booking cannot be deleted. Please set status to Cancelled or Rejected first.")
-                                      }
-                                      className="w-full h-10 text-xs font-bold gap-2 border-border/80 text-muted-foreground/60 bg-muted/30 rounded-xl cursor-not-allowed opacity-70"
-                                    >
-                                      <Lock className="size-4 text-muted-foreground/50" />
-                                      Delete Booking (Locked)
-                                    </Button>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent className="rounded-xl text-xs max-w-xs p-3">
-                                  <p className="font-bold text-amber-600">Deletion Requirement Notice</p>
-                                  <p className="text-muted-foreground mt-1">
-                                    Bookings must be set to <strong>Cancelled</strong> or <strong>Rejected</strong> before they can be deleted from the database.
-                                  </p>
-                                </TooltipContent>
-                              </Tooltip>
-                              <p className="text-[11px] text-muted-foreground/80 font-medium leading-tight">
-                                🔒 This booking must be set to <strong>Cancelled</strong> or <strong>Rejected</strong> status before it can be deleted.
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={deleteBooking.isPending}
+                            className="w-full h-10 text-xs font-extrabold gap-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-all hover:scale-101 active:scale-95 cursor-pointer"
+                          >
+                            <Trash2 className="size-4" />
+                            {deleteBooking.isPending ? "Deleting Booking..." : "Delete Booking Record"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="rounded-3xl max-w-md">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-lg font-extrabold text-foreground font-display flex items-center gap-2">
+                              <Trash2 className="size-5 text-rose-600" /> Delete Booking Agreement?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed pt-2 space-y-2">
+                              <p>
+                                Are you sure you want to permanently delete the booking agreement for{" "}
+                                <strong className="text-foreground font-bold">{drawerBooking.customer_name}</strong> (Plot #{drawerBooking.plots?.plot_number})?
                               </p>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 text-[11px] font-medium space-y-1">
+                                <div className="font-bold">⚠️ Consequence of deletion:</div>
+                                <div>• The plot status will be released back to <strong>Available</strong>.</div>
+                                <div>• All payment receipts & schedules associated with this booking will be removed.</div>
+                                <div>• This action is permanent and cannot be reversed.</div>
+                              </div>
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter className="pt-2">
+                            <AlertDialogCancel className="rounded-xl text-xs font-bold">Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteBooking.mutate(drawerBooking)}
+                              className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl gap-1.5 cursor-pointer"
+                            >
+                              <Trash2 className="size-3.5" />
+                              Confirm Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 )}
               </>
