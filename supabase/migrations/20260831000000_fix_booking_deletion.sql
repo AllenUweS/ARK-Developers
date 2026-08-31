@@ -1,5 +1,5 @@
 -- ==============================================================================
--- FIX BOOKING DELETION & CASCADING RLS POLICIES
+-- FIX BOOKING DELETION & CASCADING RLS POLICIES (FAIL-SAFE)
 -- ==============================================================================
 
 -- 1. Create atomic SECURITY DEFINER function to completely delete a booking
@@ -20,12 +20,26 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'message', 'Booking not found');
   END IF;
 
-  -- Delete all sub-records explicitly to prevent FK violations
-  DELETE FROM public.booking_cancellations WHERE booking_id = _booking_id;
-  DELETE FROM public.incentive_disbursals WHERE booking_id = _booking_id;
-  DELETE FROM public.installment_payments WHERE booking_id = _booking_id;
-  DELETE FROM public.booking_installment_schedules WHERE booking_id = _booking_id;
-  DELETE FROM public.incentives WHERE booking_id = _booking_id;
+  -- Delete all sub-records dynamically if tables exist
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'booking_cancellations') THEN
+    DELETE FROM public.booking_cancellations WHERE booking_id = _booking_id;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'incentive_disbursals') THEN
+    DELETE FROM public.incentive_disbursals WHERE booking_id = _booking_id;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'incentive_grants') THEN
+    DELETE FROM public.incentive_grants WHERE booking_id = _booking_id;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'installment_payments') THEN
+    DELETE FROM public.installment_payments WHERE booking_id = _booking_id;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'booking_installment_schedules') THEN
+    DELETE FROM public.booking_installment_schedules WHERE booking_id = _booking_id;
+  END IF;
 
   -- Delete the main booking row
   DELETE FROM public.bookings WHERE id = _booking_id;
@@ -51,18 +65,20 @@ DROP POLICY IF EXISTS "Authenticated users delete bookings" ON public.bookings;
 CREATE POLICY "Authenticated users delete bookings" ON public.bookings
   FOR DELETE TO authenticated USING (true);
 
-DROP POLICY IF EXISTS "Authenticated delete installment_payments" ON public.installment_payments;
-CREATE POLICY "Authenticated delete installment_payments" ON public.installment_payments
-  FOR DELETE TO authenticated USING (true);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'installment_payments') THEN
+    DROP POLICY IF EXISTS "Authenticated delete installment_payments" ON public.installment_payments;
+    CREATE POLICY "Authenticated delete installment_payments" ON public.installment_payments FOR DELETE TO authenticated USING (true);
+  END IF;
 
-DROP POLICY IF EXISTS "Authenticated delete booking_schedules" ON public.booking_installment_schedules;
-CREATE POLICY "Authenticated delete booking_schedules" ON public.booking_installment_schedules
-  FOR DELETE TO authenticated USING (true);
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'booking_installment_schedules') THEN
+    DROP POLICY IF EXISTS "Authenticated delete booking_schedules" ON public.booking_installment_schedules;
+    CREATE POLICY "Authenticated delete booking_schedules" ON public.booking_installment_schedules FOR DELETE TO authenticated USING (true);
+  END IF;
 
-DROP POLICY IF EXISTS "Authenticated delete booking_cancellations" ON public.booking_cancellations;
-CREATE POLICY "Authenticated delete booking_cancellations" ON public.booking_cancellations
-  FOR DELETE TO authenticated USING (true);
-
-DROP POLICY IF EXISTS "Authenticated delete incentive_disbursals" ON public.incentive_disbursals;
-CREATE POLICY "Authenticated delete incentive_disbursals" ON public.incentive_disbursals
-  FOR DELETE TO authenticated USING (true);
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'booking_cancellations') THEN
+    DROP POLICY IF EXISTS "Authenticated delete booking_cancellations" ON public.booking_cancellations;
+    CREATE POLICY "Authenticated delete booking_cancellations" ON public.booking_cancellations FOR DELETE TO authenticated USING (true);
+  END IF;
+END $$;
