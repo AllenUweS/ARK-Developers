@@ -69,7 +69,7 @@ function AuthPage() {
           }
           throw error;
         }
-        toast.success("Welcome back to Terra 2.0.");
+        toast.success("Welcome back to ARK Developers.");
         nav({ to: "/dashboard" });
       }
     } catch (err: any) {
@@ -86,21 +86,27 @@ function AuthPage() {
 
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center p-4 sm:p-6 lg:p-10 overflow-hidden text-stone-900 selection:bg-terracotta selection:text-white">
-      {/* 3D Liquid Background Canvas displaying TERRA 2.0 image */}
+      {/* 3D Liquid Background Canvas displaying background image */}
       <LiquidEffectAnimation imageSrc="/terra-bg.png" />
 
       {/* Top Header Navigation */}
       <header className="absolute top-0 inset-x-0 z-30 flex items-center justify-between p-6 sm:px-12 pointer-events-auto">
         <Link
           to="/"
-          className="inline-flex items-center gap-3 text-2xl font-bold tracking-tight text-stone-900 hover:text-terracotta transition-colors group"
+          className="inline-flex items-center gap-3 text-2xl font-bold tracking-tight text-stone-900 hover:text-amber-800 transition-colors group"
         >
           <img
-            src="/logo.png"
-            alt="Terra Logo"
-            className="size-9 rounded-xl object-cover border border-stone-300 shadow-md group-hover:scale-105 transition-transform"
+            src="/ark-logo.png"
+            alt="ARK Logo"
+            className="h-9 w-auto object-contain group-hover:scale-105 transition-transform"
+            onError={(e: any) => {
+              e.currentTarget.style.display = "none";
+            }}
           />
-          <span className="font-display">Terra 2.0</span>
+          <div className="flex flex-col">
+            <span className="font-serif font-black text-lg text-slate-900 leading-tight">ARK DEVELOPERS</span>
+            <span className="text-[9px] uppercase font-bold text-amber-800 tracking-wider">Builders & Developers</span>
+          </div>
         </Link>
 
         <Link
@@ -141,7 +147,7 @@ function AuthPage() {
               </h1>
               <p className="text-sm text-stone-600 leading-relaxed font-medium">
                 {isSignUp
-                  ? "Initialize your Terra 2.0 developer session to manage land parcels."
+                  ? "Initialize your ARK Developers session to manage land parcels."
                   : "Sign in to access interactive layout masterplans and leads."}
               </p>
             </div>
@@ -229,7 +235,7 @@ function AuthPage() {
 
       {/* Footer Branding */}
       <footer className="absolute bottom-4 inset-x-0 z-30 text-center text-xs text-stone-500 font-medium pointer-events-none select-none">
-        © Terra 2.0 Land Studio · Powered by HAEGL
+        © ARK Builders & Developers · Powered by HAEGL
       </footer>
     </div>
   );

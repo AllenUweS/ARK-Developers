@@ -11,10 +11,10 @@ import "lenis/dist/lenis.css";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Terra — Land Developer Platform" },
+      { title: "ARK Developers — Land & Plotted Development Platform" },
       {
         name: "description",
-        content: "Premium plotted developments, managed end to end. Discover Terra's current projects or sign in to your dashboard.",
+        content: "Premium plotted developments, managed end to end. Discover ARK Developers' current projects or sign in to your dashboard.",
       },
     ],
   }),
@@ -497,7 +497,7 @@ function CanvasHeroVideo({
 
 const heroChapters = [
   {
-    badge: "Terra Premium Land Developments",
+    badge: "ARK Developers — Premium Land Developments",
     title: "Discover Plots with a Soul",
     subtitle: "Sanctuaries designed for modern living & everlasting peace.",
     buttons: [
@@ -641,9 +641,26 @@ function Index() {
   return (
     <div className="relative bg-background text-foreground">
       {/* NAV */}
-      <nav className="fixed inset-x-0 top-0 z-[1000] bg-black/30 backdrop-blur-md border-b border-white/10 py-4">
+      <nav className="fixed inset-x-0 top-0 z-[1000] bg-black/40 backdrop-blur-md border-b border-white/10 py-3.5">
         <div className="w-content-width mx-auto flex items-center justify-between relative z-[1100]">
-          <Link to="/" className="text-xl font-medium text-white mix-blend-difference">Terra</Link>
+          <Link to="/" className="flex items-center gap-2.5 text-white group">
+            <img
+              src="/ark-logo.png"
+              alt="ARK Developers Logo"
+              className="h-8 sm:h-9 w-auto object-contain brightness-0 invert"
+              onError={(e: any) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+            <div className="flex flex-col">
+              <span className="font-serif font-black text-sm sm:text-base tracking-tight leading-none text-white">
+                ARK DEVELOPERS
+              </span>
+              <span className="text-[8px] sm:text-[9px] text-amber-400 tracking-widest uppercase font-bold mt-0.5">
+                Builders & Developers
+              </span>
+            </div>
+          </Link>
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Link
               to="/auth"
@@ -798,17 +815,17 @@ function Index() {
         <section id="about" aria-label="About" className="relative py-28 overflow-hidden">
           <ParallaxLayer speed={-0.18} className="absolute inset-x-0 top-6 flex justify-center pointer-events-none select-none z-0">
             <span className="text-[8.7vw] font-black text-foreground/[0.08] uppercase tracking-tight whitespace-nowrap w-full text-center px-1">
-              TERRA ESTATES
+              ARK DEVELOPERS
             </span>
           </ParallaxLayer>
           <div className="relative z-10 flex flex-col gap-8 md:gap-10 mx-auto w-content-width">
             <FadeIn direction="up">
               <div className="flex flex-col items-center gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.25em] text-terracotta mb-1">
-                  01 — Terra Vision
+                  01 — ARK Vision
                 </span>
                 <h2 className="md:max-w-8/10 text-5xl md:text-7xl 2xl:text-8xl leading-[1.15] font-semibold text-center text-balance">
-                  For those who travel like it's an art form.
+                  For those who value trust, design & legacy.
                 </h2>
               </div>
             </FadeIn>
@@ -833,14 +850,14 @@ function Index() {
             <FadeIn direction="up">
               <div className="flex flex-col items-center w-content-width mx-auto gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.25em] text-terracotta mb-1">
-                  02 — Terra Developments
+                  02 — ARK Developments
                 </span>
                 {/* <div className="px-3 py-1 mb-1 text-sm bg-card/90 text-card-foreground rounded w-fit">Developments</div> */}
                 <h2 className="md:max-w-8/10 text-5xl md:text-6xl 2xl:text-7xl leading-[1.15] font-semibold text-center text-balance">
                   Our Projects
                 </h2>
                 <p className="md:max-w-7/10 text-lg md:text-xl leading-snug text-center text-balance text-muted-foreground">
-                  Explore the plotted developments currently available through Terra.
+                  Explore the plotted developments currently available through ARK Developers.
                 </p>
               </div>
             </FadeIn>
@@ -861,7 +878,7 @@ function Index() {
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center justify-between gap-3"><h3 className="text-3xl font-semibold leading-snug">{project.name}</h3><span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium capitalize text-muted-foreground">{project.status}</span></div>
                         <p className="text-sm font-medium text-terracotta">{project.location}</p>
-                        <p className="text-base leading-snug text-muted-foreground">{project.description || "A thoughtfully planned Terra land development."}</p>
+                        <p className="text-base leading-snug text-muted-foreground">{project.description || "A thoughtfully planned ARK Developers land development."}</p>
                         <Link to="/auth" className="mt-2 w-fit text-sm font-medium underline underline-offset-4 hover:text-terracotta">Explore project</Link>
                       </div>
                     </div>
@@ -910,8 +927,8 @@ function Index() {
             </div>
             <div className="w-full h-px bg-foreground/20" />
             <div className="w-full flex items-center justify-between pt-5">
-              <span className="text-sm opacity-50">© 2026 Terra Studios. All rights reserved.</span>
-              <span className="text-sm opacity-50">Marbella, Costa del Sol</span>
+              <span className="text-sm opacity-50">© 2026 ARK Builders & Developers. All rights reserved.</span>
+              <span className="text-sm opacity-50">Hubballi, Karnataka</span>
             </div>
           </div>
         </FadeIn>
