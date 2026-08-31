@@ -48,7 +48,7 @@ export function EmployeesOverview({
 
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Employees — tap to view leads
+          Executives — tap to view leads
         </p>
 
         <div className="space-y-3">
@@ -105,7 +105,7 @@ export function EmployeesOverview({
 
           {employees.length === 0 && (
             <div className="text-center py-10 text-sm text-muted-foreground bg-card rounded-xl border border-border/50">
-              No employees in this team.
+              No executives in this team.
             </div>
           )}
         </div>

@@ -39,6 +39,7 @@
   --color-ink: var(--ink);
   --color-plot-available: var(--plot-available);
   --color-plot-pending: var(--plot-pending);
+  --color-plot-has-leads: var(--plot-has-leads);
   --color-plot-booked: var(--plot-booked);
   --color-plot-reserved: var(--plot-reserved);
   --color-plot-sold: var(--plot-sold);
@@ -67,14 +68,14 @@
   --secondary: oklch(0.93 0.015 80);
   --secondary-foreground: oklch(0.22 0.01 60);
 
-  --muted: oklch(0.93 0.015 80);
-  --muted-foreground: oklch(0.45 0.015 65);
+  --muted: oklch(0.93 0.01 80);
+  --muted-foreground: oklch(0.5 0.02 60);
 
   /* Terracotta accent */
   --accent: oklch(0.62 0.16 42);
   --accent-foreground: oklch(0.98 0.005 85);
   --terracotta: oklch(0.62 0.16 42);
-  --sand: oklch(0.9 0.02 75);
+  --sand: oklch(0.88 0.03 80);
   --ink: oklch(0.18 0.01 60);
 
   --destructive: oklch(0.55 0.2 27);
@@ -85,11 +86,12 @@
   --ring: oklch(0.62 0.16 42);
 
   /* Plot statuses */
-  --plot-available: oklch(0.72 0.14 145);
-  --plot-pending: oklch(0.82 0.15 85);
-  --plot-booked: oklch(0.6 0.2 27);
-  --plot-reserved: oklch(0.62 0.14 240);
-  --plot-sold: oklch(0.35 0.02 60);
+  --plot-available: oklch(0.68 0.18 150); /* Emerald Green */
+  --plot-pending: oklch(0.84 0.18 85);   /* Warm Amber */
+  --plot-has-leads: oklch(0.93 0.21 102); /* Light Radiant Canary Yellow */
+  --plot-booked: oklch(0.68 0.20 45);    /* Vibrant Orange */
+  --plot-reserved: oklch(0.62 0.18 250); /* Royal/Cobalt Blue */
+  --plot-sold: oklch(0.55 0.22 25);      /* Crimson Red */
 
   /* Marketing site CTAs */
   --primary-cta: oklch(0.22 0.01 60);
@@ -181,4 +183,84 @@
 
 .scrollbar-thumb-muted-foreground\/20:hover::-webkit-scrollbar-thumb {
   background-color: rgb(115 115 115 / 0.4);
+}
+
+/* ========================================================
+   GLOBAL PRINT STYLESHEET (A4 Multi-Page Precision Engine)
+   ======================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    text-shadow: none !important;
+  }
+
+  html, body {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    font-size: 11px !important;
+  }
+
+  /* Hide app navigation, chrome, headers, and UI controls when printing */
+  aside,
+  header:not(.print-header),
+  nav,
+  button:not(.print-include),
+  .print\:hidden,
+  .no-print,
+  [data-radix-popper-content-wrapper] {
+    display: none !important;
+  }
+
+  /* Unclip Radix Dialog Portals if printing with an open modal */
+  [data-radix-dialog-overlay] {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    position: static !important;
+  }
+
+  [data-radix-dialog-content] {
+    position: static !important;
+    transform: none !important;
+    max-height: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print-document {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  .page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
 }

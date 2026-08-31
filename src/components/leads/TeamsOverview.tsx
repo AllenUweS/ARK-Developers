@@ -73,7 +73,7 @@ export function TeamsOverview({
                     <p className="text-sm font-semibold truncate">{t.managerName}'s Team</p>
                     <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground mt-0.5">
                       <span className="inline-flex items-center gap-1">
-                        <Users2 className="h-3 w-3" /> {t.employeeCount} employee
+                        <Users2 className="h-3 w-3" /> {t.employeeCount} executive
                         {t.employeeCount === 1 ? "" : "s"}
                       </span>
                       <span>·</span>
@@ -113,7 +113,7 @@ export function TeamsOverview({
 
           {teams.length === 0 && (
             <div className="text-center py-10 text-sm text-muted-foreground bg-card rounded-xl border border-border/50">
-              No manager teams set up yet.
+              No sales head teams set up yet.
             </div>
           )}
 
@@ -133,8 +133,8 @@ export function TeamsOverview({
                   <div className="min-w-0">
                     <p className="text-sm font-semibold truncate">Unassigned / No team</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {unassigned.employeeCount} employee{unassigned.employeeCount === 1 ? "" : "s"}{" "}
-                      without a manager
+                      {unassigned.employeeCount} executive{unassigned.employeeCount === 1 ? "" : "s"}{" "}
+                      without a sales head
                       {unassigned.leadCount > 0 ? ` · ${unassigned.leadCount} leads` : ""}
                     </p>
                   </div>

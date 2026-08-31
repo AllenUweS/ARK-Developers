@@ -20,6 +20,7 @@ import {
   Target,
   Zap,
   Edit3,
+  PieChart,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -143,8 +144,8 @@ function Dashboard() {
     },
   });
 
-  const isAdmin = role === "admin" || role === "super_admin";
-  const isManager = role === "manager";
+  const isAdmin = role === "admin" || role === "super_admin" || role === "accounts";
+  const isManager = role === "manager" || role === "management" || role === "accounts";
   const canSetTarget = isAdmin || isManager;
 
   const saveTarget = () => {
@@ -214,14 +215,19 @@ function Dashboard() {
             </p>
           </div>
 
-          {role && (
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+            <Link to="/project-stats">
+              <Button size="sm" className="bg-gradient-to-r from-terracotta to-amber-600 hover:from-terracotta/90 hover:to-amber-500 text-white text-xs gap-1.5 shadow-sm font-semibold">
+                <PieChart className="h-4 w-4" /> Project Stats & Income Tally
+              </Button>
+            </Link>
+            {role && (
               <div className="rounded-xl border border-border/60 bg-card/85 px-4 py-2.5 backdrop-blur-md text-right shadow-2xs">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Access Profile</p>
                 <p className="text-sm font-bold text-terracotta capitalize">{role.replace("_", " ")}</p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -573,7 +579,7 @@ function Dashboard() {
       </div>
 
       {/* Role-specific content */}
-      {(role === "admin" || role === "super_admin" || role === "manager") && (
+      {(role === "admin" || role === "super_admin" || role === "manager" || role === "management" || role === "accounts") && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Link to="/incentives">
             <Card className="transition-shadow hover:shadow-md cursor-pointer">
@@ -600,7 +606,7 @@ function Dashboard() {
                   </div>
                   <div>
                     <p className="font-semibold">Manage Team</p>
-                    <p className="text-xs text-muted-foreground">{stats?.totalEmployees ?? 0} employees</p>
+                    <p className="text-xs text-muted-foreground">{stats?.totalEmployees ?? 0} executives</p>
                   </div>
                 </div>
               </CardContent>
@@ -634,7 +640,7 @@ function Dashboard() {
               Set Monthly Sales Target
             </DialogTitle>
             <DialogDescription>
-              As an Admin / Manager, you can set the monthly revenue target for your sales team.
+              As an Admin / Sales Head, you can set the monthly revenue target for your sales team.
             </DialogDescription>
           </DialogHeader>
 

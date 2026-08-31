@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { SiteMapper } from "@/components/site-mapper/SiteMapper";
 import { EditProjectDialog } from "@/components/EditProjectDialog";
 import { DocumentViewerModal } from "@/components/DocumentViewerModal";
+import { ProjectBankAccountsSection } from "@/components/projects/ProjectBankAccountsSection";
 
 export const Route = createFileRoute("/_authenticated/projects_/$id")({
   component: ProjectDetail,
@@ -78,16 +79,25 @@ function ProjectDetail() {
   });
 
 
-  // Signed URL for layout image
+  // Signed URL for layout image (with fallback for migrated old project files)
   const layoutPath = (project as any)?.layout_image_url as string | null | undefined;
   const { data: layoutUrl } = useQuery({
     queryKey: ["layout-url", layoutPath],
     enabled: !!layoutPath,
     queryFn: async () => {
-      const { data } = await supabase.storage
+      if (!layoutPath) return null;
+      if (layoutPath.startsWith("http://") || layoutPath.startsWith("https://")) {
+        return layoutPath;
+      }
+      const { data, error } = await supabase.storage
         .from("project-layouts")
-        .createSignedUrl(layoutPath!, 3600);
-      return data?.signedUrl ?? null;
+        .createSignedUrl(layoutPath, 3600);
+
+      if (data?.signedUrl) return data.signedUrl;
+
+      // Fallback: try public URL from old project storage where the cloned database images were hosted
+      const oldStorageFallback = `https://zolbuckwnjsxfgqqkcjj.supabase.co/storage/v1/object/public/project-layouts/${layoutPath}`;
+      return oldStorageFallback;
     },
   });
 
@@ -296,6 +306,13 @@ function ProjectDetail() {
         layoutUrl={layoutUrl}
         uploading={uploading}
         onUploadLayout={uploadLayout}
+      />
+
+      {/* Project Bank Accounts */}
+      <ProjectBankAccountsSection
+        projectId={id}
+        projectName={project.name}
+        canEdit={isAdmin || role === "management" || role === "accounts"}
       />
 
       {/* Documents */}

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isValid10DigitPhone, sanitizePhoneInput } from "@/lib/formValidation";
 import { supabase, createSecondarySupabaseClient } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -17,11 +19,16 @@ const formSchema = z.object({
   full_name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
-  phone: z.string().optional(),
+  phone: z
+    .string()
+    .refine((val) => !val || isValid10DigitPhone(val), {
+      message: "Mobile number must be a valid 10-digit number",
+    })
+    .optional(),
   job_title: z.string().optional(),
   department: z.string().optional(),
   status: z.enum(["active", "inactive"]),
-  role: z.enum(["admin", "employee", "manager", "management"]),
+  role: z.enum(["admin", "employee", "manager", "management", "accounts", "crm"]),
   manager_id: z.string().optional(),
   joining_date: z.string().optional(),
 });
@@ -142,7 +149,7 @@ export function EmployeeFormDialog({
 
       if (roleError) throw roleError;
 
-      toast.success(isEditing ? "Employee updated successfully" : "Employee added successfully");
+      toast.success(isEditing ? "Executive updated successfully" : "Executive added successfully");
       qc.invalidateQueries({ queryKey: ["team_profiles"] });
       qc.invalidateQueries({ queryKey: ["team_roles"] });
       onOpenChange(false);
@@ -158,7 +165,7 @@ export function EmployeeFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Employee" : "Add New Employee"}</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Executive" : "Add New Executive"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-4">
@@ -187,7 +194,7 @@ export function EmployeeFormDialog({
               <div>
                 <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <KeyRound className="h-3.5 w-3.5 text-terracotta" />
-                  Employee Authentication
+                  Executive Authentication
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">Admin power to update password or send reset link.</p>
               </div>
@@ -218,7 +225,12 @@ export function EmployeeFormDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Phone Number</Label>
-              <Input {...register("phone")} placeholder="+1 555-0123" />
+              <PhoneInput
+                value={watch("phone") || ""}
+                onChange={(val) => setValue("phone", val, { shouldValidate: true })}
+                placeholder="98765 43210"
+                error={errors.phone?.message}
+              />
             </div>
 
             <div className="space-y-2">
@@ -247,8 +259,10 @@ export function EmployeeFormDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="employee">Employee</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="employee">Executive</SelectItem>
+                  <SelectItem value="manager">Sales Head</SelectItem>
+                  <SelectItem value="crm">CRM Executive (Leads, Inquiries, Messages & Customer Relations)</SelectItem>
+                  <SelectItem value="accounts">Accounts Manager (Treasury, Bookings, Installments & Incentives)</SelectItem>
                   <SelectItem value="management">Management (Admin + Treasury)</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
@@ -268,17 +282,17 @@ export function EmployeeFormDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Reports To (Manager)</Label>
+              <Label>Reports To (Sales Head)</Label>
               <input type="hidden" {...register("manager_id")} />
               <Select value={manager_id || "none"} onValueChange={(v: any) => setValue("manager_id", v, { shouldDirty: true, shouldValidate: true })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select manager" />
+                  <SelectValue placeholder="Select sales head" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None (Top Level)</SelectItem>
                   {teamMembers?.filter(m => m.id !== employee?.id && ['manager', 'admin', 'super_admin'].includes(m.role)).map(m => (
                     <SelectItem key={m.id} value={m.id}>
-                      {m.full_name || m.email} ({m.role.replace('_', ' ')})
+                      {m.full_name || m.email} ({m.role === 'manager' ? 'Sales Head' : m.role.replace('_', ' ')})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -292,7 +306,7 @@ export function EmployeeFormDialog({
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isEditing ? "Save Changes" : "Add Employee"}
+              {isEditing ? "Save Changes" : "Add Executive"}
             </Button>
           </div>
         </form>

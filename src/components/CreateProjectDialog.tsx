@@ -42,13 +42,21 @@ export function CreateProjectDialog() {
         finalCoverUrl = data.publicUrl;
       }
 
+      const cleanCode = code.trim().toUpperCase();
+      const cleanName = name.trim();
+      const cleanLocation = location.trim();
+
+      if (!cleanCode) throw new Error("Project Code is required");
+      if (!cleanName) throw new Error("Project Name is required");
+      if (!cleanLocation) throw new Error("Location is required");
+
       const { data, error } = await supabase
         .from("projects")
         .insert([{ 
-          code, 
-          name, 
-          location, 
-          description,
+          code: cleanCode, 
+          name: cleanName, 
+          location: cleanLocation, 
+          description: description.trim() || null,
           cover_image_url: finalCoverUrl 
         }])
         .select()

@@ -4,6 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import {
+  getPhoneValidationError,
+  isValid10DigitPhone,
+  isValidEmail,
+  sanitizePhoneInput,
+  sanitizePositiveNumber,
+} from "@/lib/formValidation";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -93,12 +103,24 @@ export function LeadFormDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const cleanPhone = sanitizePhoneInput(form.phone);
+    const phoneErr = getPhoneValidationError(cleanPhone);
+    if (phoneErr) {
+      toast.error(phoneErr);
+      return;
+    }
+
+    if (form.email && form.email.trim() && !isValidEmail(form.email)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
     onSubmit({
       name: form.name.trim(),
-      phone: form.phone.trim(),
+      phone: cleanPhone,
       email: form.email.trim() || null,
       source: form.source || null,
-      budget: form.budget ? Number(form.budget) : null,
+      budget: form.budget ? sanitizePositiveNumber(form.budget) : null,
       notes: form.notes.trim() || null,
       meeting_date: form.meeting_date ? new Date(form.meeting_date).toISOString() : null,
       meeting_location: form.meeting_location.trim() || null,
@@ -137,13 +159,14 @@ export function LeadFormDialog({
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Phone <span className="text-terracotta">*</span>
               </Label>
-              <Input
-                className="mt-1.5"
-                value={form.phone}
-                onChange={(e) => set("phone", e.target.value)}
-                placeholder="10-digit mobile number"
-                required
-              />
+              <div className="mt-1.5">
+                <PhoneInput
+                  value={form.phone}
+                  onChange={(val) => set("phone", val)}
+                  placeholder="98765 43210"
+                  required
+                />
+              </div>
             </div>
             <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -161,13 +184,13 @@ export function LeadFormDialog({
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Budget (₹)
               </Label>
-              <Input
-                type="number"
-                className="mt-1.5"
-                value={form.budget}
-                onChange={(e) => set("budget", e.target.value)}
-                placeholder="optional"
-              />
+              <div className="mt-1.5">
+                <CurrencyInput
+                  value={form.budget}
+                  onChange={(val) => set("budget", val)}
+                  placeholder="e.g. 50,00,000"
+                />
+              </div>
             </div>
             <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">

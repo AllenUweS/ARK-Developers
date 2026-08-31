@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { EmployeeFormDialog } from "./EmployeeFormDialog";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { AddEditBdoDialog } from "@/components/bdo/AddEditBdoDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -17,11 +18,19 @@ const HIERARCHY: Record<string, number> = {
   "ADMIN": 2,
   "ADMINS": 2,
   "MANAGEMENT": 3,
-  "MANAGER": 4,
-  "MANAGERS": 4,
-  "HR": 5,
-  "EMPLOYEE": 6,
-  "EMPLOYEES": 6,
+  "ACCOUNTS": 4,
+  "ACCOUNTANT": 4,
+  "SALES HEAD": 5,
+  "SALES HEADS": 5,
+  "MANAGER": 5,
+  "MANAGERS": 5,
+  "CRM": 6,
+  "CRM TEAM": 6,
+  "HR": 7,
+  "EXECUTIVE": 8,
+  "EXECUTIVES": 8,
+  "EMPLOYEE": 8,
+  "EMPLOYEES": 8,
 };
 
 const getPriority = (name: string) => HIERARCHY[name] || 99;
@@ -30,6 +39,8 @@ const getRoleGradient = (role: string) => {
   const r = role.toLowerCase();
   if (r.includes('super')) return 'bg-gradient-to-r from-stone-800 to-stone-600 text-white border-transparent shadow-sm';
   if (r.includes('management')) return 'bg-gradient-to-r from-purple-700 via-indigo-600 to-blue-600 text-white border-transparent shadow-sm';
+  if (r.includes('accounts') || r.includes('accountant')) return 'bg-gradient-to-r from-emerald-700 via-teal-600 to-cyan-600 text-white border-transparent shadow-sm';
+  if (r.includes('crm')) return 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 text-white border-transparent shadow-sm';
   if (r.includes('admin')) return 'bg-gradient-to-r from-orange-700 to-orange-500 text-white border-transparent shadow-sm';
   if (r.includes('manager')) return 'bg-gradient-to-r from-amber-600 to-yellow-500 text-white border-transparent shadow-sm';
   if (r.includes('hr')) return 'bg-gradient-to-r from-rose-700 to-rose-500 text-white border-transparent shadow-sm';
@@ -44,6 +55,38 @@ export function TeamTable() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("ALL");
   const qc = useQueryClient();
+
+  // BDO Partner State
+  const [editingBdo, setEditingBdo] = useState<any | null>(null);
+  const [isBdoDialogOpen, setIsBdoDialogOpen] = useState(false);
+
+  const { data: bdoPartners = [] } = useQuery({
+    queryKey: ["all-bdo-partners"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("bdo_partners")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) return [];
+      return data ?? [];
+    },
+  });
+
+  const toggleBdoStatus = async (bdo: any, checked: boolean) => {
+    try {
+      const { error } = await (supabase as any)
+        .from("bdo_partners")
+        .update({ is_active: checked })
+        .eq("id", bdo.id);
+
+      if (error) throw error;
+      toast.success(`${bdo.name} status updated to ${checked ? "Active" : "Inactive"}`);
+      qc.invalidateQueries({ queryKey: ["all-bdo-partners"] });
+      qc.invalidateQueries({ queryKey: ["active-bdo-partners"] });
+    } catch (err: any) {
+      toast.error("Failed to update BDO status");
+    }
+  };
 
   const { data: currentUser } = useQuery({
     queryKey: ["current_user"],
@@ -95,7 +138,9 @@ export function TeamTable() {
       if (roleMap.includes("super_admin")) primaryRole = "super_admin";
       else if (roleMap.includes("admin")) primaryRole = "admin";
       else if (roleMap.includes("management")) primaryRole = "management";
+      else if (roleMap.includes("accounts")) primaryRole = "accounts";
       else if (roleMap.includes("manager")) primaryRole = "manager";
+      else if (roleMap.includes("crm")) primaryRole = "crm";
 
       return {
         ...profile,
@@ -104,7 +149,7 @@ export function TeamTable() {
     }) || [];
 
     return basicProfiles.map((profile) => {
-      let groupName = profile.role.toUpperCase();
+      let groupName = profile.role === "crm" ? "CRM TEAM" : profile.role === "manager" ? "SALES HEADS" : profile.role === "employee" ? "EXECUTIVES" : profile.role.toUpperCase();
 
       return {
         ...profile,
@@ -182,7 +227,7 @@ export function TeamTable() {
           }`}
           onClick={() => setActiveFilter("ALL")}
         >
-          ALL <span className="ml-2 bg-background/20 px-1.5 py-0.5 rounded-full text-[10px]">{teamMembers.length}</span>
+          ALL <span className="ml-2 bg-background/20 px-1.5 py-0.5 rounded-full text-[10px]">{teamMembers.length + bdoPartners.length}</span>
         </Button>
         {allGroupNames.map(g => {
           const count = teamMembers.filter(m => m.groupName === g).length;
@@ -201,6 +246,18 @@ export function TeamTable() {
             </Button>
           )
         })}
+
+        <Button
+          variant="outline"
+          className={`rounded-full h-8 transition-all duration-300 ${
+            activeFilter === "BDO PARTNERS"
+              ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-md hover:shadow-lg"
+              : "border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+          }`}
+          onClick={() => setActiveFilter("BDO PARTNERS")}
+        >
+          BDO PARTNERS <span className="ml-2 bg-emerald-500/20 px-1.5 py-0.5 rounded-full text-[10px] font-bold">{bdoPartners.length}</span>
+        </Button>
       </div>
 
       {/* Search and Add */}
@@ -208,21 +265,35 @@ export function TeamTable() {
         <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
-            placeholder="Search name, email, etc..." 
+            placeholder="Search employee, BDO partner, agency, etc..." 
             className="pl-9 bg-card rounded-full"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button
-          className="w-full sm:w-auto rounded-full bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white border-transparent shadow-md hover:shadow-lg transition-all duration-300"
-          onClick={() => {
-            setEditingEmployee(null);
-            setIsDialogOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4 mr-2" /> Add User
-        </Button>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto rounded-full border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 font-semibold"
+            onClick={() => {
+              setEditingBdo(null);
+              setIsBdoDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-1.5 text-emerald-600" /> Add BDO Partner
+          </Button>
+
+          <Button
+            className="w-full sm:w-auto rounded-full bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white border-transparent shadow-md hover:shadow-lg transition-all duration-300"
+            onClick={() => {
+              setEditingEmployee(null);
+              setIsDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> Add User
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -293,7 +364,7 @@ export function TeamTable() {
                           <div className="flex items-center gap-2 mb-1 pr-6">
                             <h4 className="font-semibold text-sm truncate">{member.full_name || "Unknown User"}</h4>
                             <Badge className={`h-5 px-1.5 text-[9px] uppercase font-bold tracking-wider ${getRoleGradient(member.role)}`} variant="outline">
-                              {member.role.replace("_", " ")}
+                              {member.role === "crm" ? "CRM Team" : member.role === "manager" ? "Sales Head" : member.role === "employee" ? "Executive" : member.role.replace("_", " ")}
                             </Badge>
                           </div>
                           
@@ -351,6 +422,122 @@ export function TeamTable() {
               </div>
             ))
           )}
+
+          {/* OUTSOURCED BDO PARTNERS SECTION */}
+          {(activeFilter === "ALL" || activeFilter === "BDO PARTNERS") && bdoPartners.length > 0 && (
+            <div className="bg-card rounded-2xl border border-emerald-500/30 overflow-hidden">
+              <div className="flex justify-between items-center p-6 border-b border-border/50 bg-emerald-500/5">
+                <div>
+                  <h3 className="font-semibold tracking-wide text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                    <Building className="h-4 w-4 text-emerald-600" /> OUTSOURCED BDO PARTNERS
+                  </h3>
+                  <p className="text-xl font-bold">{bdoPartners.length} channel partners</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="px-4 py-1 text-xs tracking-wider bg-emerald-500/10 text-emerald-700 border-emerald-500/30 uppercase font-semibold">
+                    Channel Partners
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 font-semibold"
+                    onClick={() => {
+                      setEditingBdo(null);
+                      setIsBdoDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add BDO
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {bdoPartners
+                  .filter((bdo: any) => 
+                    !searchQuery.trim() || 
+                    bdo.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    bdo.agency_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    bdo.bdo_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    bdo.phone?.includes(searchQuery)
+                  )
+                  .map((bdo: any) => (
+                    <div key={bdo.id} className="group relative flex gap-4 p-5 rounded-xl border border-emerald-500/20 bg-background shadow-sm hover:shadow-md transition-all hover:border-emerald-500/40">
+                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg cursor-pointer"
+                          title="Edit BDO Partner"
+                          onClick={() => {
+                            setEditingBdo(bdo);
+                            setIsBdoDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 text-emerald-600" />
+                        </Button>
+                      </div>
+
+                      <Avatar className="h-12 w-12 border-2 border-emerald-500/20 font-bold">
+                        <AvatarFallback className="bg-emerald-500/10 text-emerald-600">
+                          {bdo.name?.charAt(0)?.toUpperCase() || "B"}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1 pr-6">
+                            <h4 className="font-semibold text-sm truncate">{bdo.name}</h4>
+                            {bdo.bdo_code && (
+                              <Badge variant="outline" className="h-5 px-1.5 text-[9px] uppercase font-bold bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                                {bdo.bdo_code}
+                              </Badge>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={bdo.is_active !== false}
+                              onCheckedChange={(c) => toggleBdoStatus(bdo, c)}
+                              className="scale-75 origin-left"
+                            />
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {bdo.is_active === false ? "Inactive" : "Active Partner"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          {bdo.agency_name && (
+                            <div className="flex items-center gap-2">
+                              <Building className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                              <span className="truncate font-medium text-foreground">{bdo.agency_name}</span>
+                            </div>
+                          )}
+                          {bdo.commission_rate !== undefined && (
+                            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-semibold">
+                              <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                              <span>{bdo.commission_rate}% Incentive Commission</span>
+                            </div>
+                          )}
+                          {bdo.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate font-mono">{bdo.phone}</span>
+                            </div>
+                          )}
+                          {bdo.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{bdo.email}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -365,6 +552,12 @@ export function TeamTable() {
         open={isPasswordDialogOpen}
         onOpenChange={setIsPasswordDialogOpen}
         employee={passwordTargetEmployee}
+      />
+
+      <AddEditBdoDialog
+        open={isBdoDialogOpen}
+        onOpenChange={setIsBdoDialogOpen}
+        bdo={editingBdo}
       />
     </div>
   );

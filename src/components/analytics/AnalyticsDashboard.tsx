@@ -68,7 +68,10 @@ export function AnalyticsDashboard() {
         .from("plots")
         .select("id, project_id, status, price, area_sqft, rate_per_sqft");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((p) => ({
+        ...p,
+        rate_per_sqft: p.rate_per_sqft ?? undefined,
+      }));
     },
   });
 

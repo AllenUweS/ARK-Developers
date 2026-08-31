@@ -65,16 +65,25 @@ export function PurchaserDetailsCard({
     }
   };
 
+  const isSold = plot.status === "sold";
+  const badgeStyle = isSold
+    ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
+    : "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+  const iconColor = isSold ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400";
+  const containerStyle = isSold
+    ? "border-red-500/30 from-red-500/[0.06]"
+    : "border-orange-500/30 from-orange-500/[0.06]";
+
   return (
-    <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-b from-emerald-500/[0.06] via-background to-background p-4 shadow-sm relative overflow-hidden">
+    <div className={`rounded-xl border ${containerStyle} bg-gradient-to-b via-background to-background p-4 shadow-sm relative overflow-hidden`}>
       {/* Decorative background glow */}
-      <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-emerald-500/10 blur-2xl" />
+      <div className={`pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full ${isSold ? "bg-red-500/10" : "bg-orange-500/10"} blur-2xl`} />
 
       {/* Header Badge */}
       <div className="flex items-center justify-between mb-3">
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-          <BadgeCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-          {plot.status === "sold" ? "Sold" : "Booked"}
+        <span className={`inline-flex items-center gap-1.5 rounded-md border ${badgeStyle} px-2 py-0.5 text-xs font-semibold`}>
+          <BadgeCheck className={`h-3.5 w-3.5 ${iconColor}`} />
+          {isSold ? "Sold" : "Booked"}
         </span>
         <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground flex items-center gap-1">
           <Sparkles className="h-3 w-3 text-amber-500" />
@@ -154,7 +163,7 @@ export function PurchaserDetailsCard({
                 <IndianRupee className="h-3 w-3 text-emerald-600" /> Total Price
               </span>
               <p className="font-bold text-sm text-foreground mt-0.5">
-                {formattedPrice(purchaser.total_price)}
+                {formattedPrice(purchaser.total_price != null && Number(purchaser.total_price) > 0 ? purchaser.total_price : plot.price)}
               </p>
             </div>
 

@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
+import { sanitizePositiveNumber, sanitizePercentage, formatIndianCurrency } from "@/lib/formValidation";
 import {
   Dialog,
   DialogContent,
@@ -142,10 +144,18 @@ export function PlotFormDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.plot_number.trim()) return;
-    const area = parseFloat(form.area_sqft);
-    const price = parseFloat(form.price);
-    if (!area || !price) return;
+    if (!form.plot_number.trim()) {
+      return toast.error("Plot number is required.");
+    }
+    const area = sanitizePositiveNumber(form.area_sqft);
+    const price = sanitizePositiveNumber(form.price);
+
+    if (area <= 0) {
+      return toast.error("Plot area (sq.ft) must be greater than 0.");
+    }
+    if (price <= 0) {
+      return toast.error("Plot price (₹) must be greater than 0.");
+    }
 
     onSubmit({
       plot_number: form.plot_number.trim(),
@@ -154,13 +164,13 @@ export function PlotFormDialog({
       area_sqft: area,
       dimensions: form.dimensions.trim() || null,
       price,
-      road_width: form.road_width ? parseFloat(form.road_width) : null,
+      road_width: form.road_width ? sanitizePositiveNumber(form.road_width) : null,
       corner_plot: form.corner_plot,
       remarks: form.remarks.trim() || null,
-      length_ft: form.length_ft ? parseFloat(form.length_ft) : null,
-      width_ft: form.width_ft ? parseFloat(form.width_ft) : null,
-      rate_per_sqft: form.rate_per_sqft ? parseFloat(form.rate_per_sqft) : null,
-      incentive_percentage: form.incentive_percentage ? parseFloat(form.incentive_percentage) : null,
+      length_ft: form.length_ft ? sanitizePositiveNumber(form.length_ft) : null,
+      width_ft: form.width_ft ? sanitizePositiveNumber(form.width_ft) : null,
+      rate_per_sqft: form.rate_per_sqft ? sanitizePositiveNumber(form.rate_per_sqft) : null,
+      incentive_percentage: form.incentive_percentage ? sanitizePercentage(form.incentive_percentage) : null,
     });
   }
 
@@ -247,14 +257,18 @@ export function PlotFormDialog({
                 className="bg-muted cursor-not-allowed"
                 required
               />
+              {form.area_sqft && (
+                <p className="text-[11px] font-semibold text-terracotta mt-1 flex items-center gap-1">
+                  📐 Equivalent Area: <strong>{(Number(form.area_sqft) * 0.092903).toFixed(2)} sq.m</strong> (sq.meters)
+                </p>
+              )}
             </Field>
             <Field label="Price (₹)" required>
               <Input
-                type="number"
-                inputMode="decimal"
-                value={form.price}
+                type="text"
+                value={form.price ? `₹${formatIndianCurrency(form.price)}` : ""}
                 readOnly
-                className="bg-muted cursor-not-allowed"
+                className="bg-muted cursor-not-allowed font-mono font-bold"
                 required
               />
             </Field>
@@ -273,14 +287,6 @@ export function PlotFormDialog({
                 value={form.incentive_percentage}
                 onChange={(e) => set("incentive_percentage", e.target.value)}
                 placeholder="e.g. 2"
-              />
-            </Field>
-            <Field label="Road width (ft)">
-              <Input
-                type="number"
-                inputMode="decimal"
-                value={form.road_width}
-                onChange={(e) => set("road_width", e.target.value)}
               />
             </Field>
           </div>

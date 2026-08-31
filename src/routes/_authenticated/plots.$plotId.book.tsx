@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { LeadRow } from "@/components/site-mapper/types";
+import { sanitizePhoneInput, getPhoneValidationError, isValidEmail } from "@/lib/formValidation";
+import { PhoneInput } from "@/components/ui/phone-input";
+
+import { AttributionSelector, AttributionValue } from "@/components/common/AttributionSelector";
 
 export const Route = createFileRoute("/_authenticated/plots/$plotId/book")({
   component: SelectBookingLead,
@@ -27,6 +31,9 @@ function SelectBookingLead() {
   const [newLeadName, setNewLeadName] = useState("");
   const [newLeadPhone, setNewLeadPhone] = useState("");
   const [newLeadEmail, setNewLeadEmail] = useState("");
+  const [attribution, setAttribution] = useState<AttributionValue>({
+    attributionType: "internal",
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: plot } = useQuery({
@@ -83,6 +90,16 @@ function SelectBookingLead() {
       return toast.error("Please provide lead name and phone number");
     }
 
+    const cleanPhone = sanitizePhoneInput(newLeadPhone);
+    const phoneErr = getPhoneValidationError(cleanPhone);
+    if (phoneErr) {
+      return toast.error(`Invalid Phone: ${phoneErr}`);
+    }
+
+    if (newLeadEmail.trim() && !isValidEmail(newLeadEmail)) {
+      return toast.error("Please enter a valid email address.");
+    }
+
     setIsSubmitting(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -92,13 +109,16 @@ function SelectBookingLead() {
         .from("plot_leads")
         .insert({
           name: newLeadName.trim(),
-          phone: newLeadPhone.trim(),
+          phone: sanitizePhoneInput(newLeadPhone),
           email: newLeadEmail.trim() || null,
           plot_id: plotId,
           project_id: plot?.project_id || null,
-          status: "in_progress",
+          status: "new",
           created_by: userId,
-          assigned_to: userId,
+          assigned_to: attribution.attributionType === "internal" ? (attribution.internalExecutiveId || userId) : userId,
+          bdo_id: attribution.attributionType === "bdo" ? attribution.bdoId : null,
+          external_bdo_name: attribution.attributionType === "manual_external" ? attribution.externalBdoName : null,
+          attribution_type: attribution.attributionType,
         })
         .select()
         .single();
@@ -148,7 +168,7 @@ function SelectBookingLead() {
                 <UserPlus className="h-4 w-4" /> Add Lead to Plot
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[92vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <UserPlus className="size-5 text-terracotta" /> Add Buyer Lead for Plot {plot?.plot_number}
@@ -161,12 +181,25 @@ function SelectBookingLead() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold">Phone Number *</label>
-                  <Input value={newLeadPhone} onChange={(e) => setNewLeadPhone(e.target.value)} placeholder="e.g. +91 9876543210" required />
+                  <PhoneInput
+                    value={newLeadPhone}
+                    onChange={setNewLeadPhone}
+                    placeholder="98765 43210"
+                    required
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold">Email Address (Optional)</label>
                   <Input value={newLeadEmail} onChange={(e) => setNewLeadEmail(e.target.value)} type="email" placeholder="rahul@example.com" />
                 </div>
+
+                {/* Attribution Selector Component */}
+                <AttributionSelector
+                  value={attribution}
+                  onChange={setAttribution}
+                  label="Lead Sourced By (Attribution)"
+                />
+
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => setCreateOpen(false)}>Cancel</Button>
                   <Button type="submit" size="sm" disabled={isSubmitting} className="bg-terracotta text-white hover:bg-terracotta/90">

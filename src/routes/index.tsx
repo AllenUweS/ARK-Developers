@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { sanitizePhoneInput, getPhoneValidationError, isValidEmail } from "@/lib/formValidation";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 
@@ -324,9 +325,9 @@ function ParallaxContactSection({
                 </div>
                 <input
                   value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  onChange={(e) => setContactPhone(sanitizePhoneInput(e.target.value))}
                   required
-                  placeholder="Your phone number"
+                  placeholder="10-digit mobile number"
                   aria-label="Your phone number"
                   type="tel"
                   className="w-full h-11 sm:h-13 rounded-xl border border-white/20 bg-white/10 px-4 sm:px-5 text-sm sm:text-base text-white placeholder:text-white/40 focus:border-terracotta/80 focus:bg-white/15 focus:outline-none transition-all duration-300"
@@ -581,12 +582,25 @@ function Index() {
       toast.error("Please fill in all fields");
       return;
     }
+
+    const cleanPhone = sanitizePhoneInput(contactPhone);
+    const phoneErr = getPhoneValidationError(cleanPhone);
+    if (phoneErr) {
+      toast.error(`Phone Number Error: ${phoneErr}`);
+      return;
+    }
+
+    if (!isValidEmail(contactEmail)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
     setContactLoading(true);
     try {
       const { error } = await supabase.from("contact_messages").insert({
         name: contactName,
-        email: contactEmail,
-        phone: contactPhone,
+        email: contactEmail.trim(),
+        phone: cleanPhone,
         message: contactMessage,
       });
 

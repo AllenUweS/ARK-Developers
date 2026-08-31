@@ -61,11 +61,22 @@ const MAX_SCALE = 25;
  *  tracing happens in this pixel space (like a CAD canvas); points are
  *  converted to percentages only at the moment they're saved, so the
  *  stored shape stays correct at any render size. */
-function loadImageSize(url: string): Promise<{ width: number; height: number }> {
+function loadImageSize(url: string, timeoutMs = 6000): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => reject(new Error("Failed to read layout image"));
+    let timer: any = setTimeout(() => {
+      img.src = "";
+      reject(new Error("Layout image loading timed out"));
+    }, timeoutMs);
+
+    img.onload = () => {
+      clearTimeout(timer);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error("Failed to read layout image"));
+    };
     img.src = url;
   });
 }
@@ -112,6 +123,26 @@ export function SiteMapper({
               customer_name: b.customer_name,
               customer_phone: b.customer_phone,
             };
+          }
+        }
+      }
+      return map;
+    },
+  });
+
+  const { data: plotLeadsCounts } = useQuery({
+    queryKey: ["project-plot-leads-counts", projectId],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("plot_leads")
+        .select("plot_id, status")
+        .eq("project_id", projectId);
+
+      const map: Record<string, number> = {};
+      if (data) {
+        for (const l of data) {
+          if (l.plot_id && l.status !== "dropped") {
+            map[l.plot_id] = (map[l.plot_id] || 0) + 1;
           }
         }
       }
@@ -234,7 +265,7 @@ export function SiteMapper({
           customer_phone: bData.customer_phone,
           customer_email: bData.customer_email,
           customer_address: bData.customer_address,
-          total_price: bData.total_price,
+          total_price: bData.total_price != null && Number(bData.total_price) > 0 ? bData.total_price : selectedPlot?.price,
           booking_amount: bData.booking_amount,
           advance_paid: bData.advance_paid,
           booking_date: bData.booking_date,
@@ -260,7 +291,7 @@ export function SiteMapper({
           customer_name: lData.name,
           customer_phone: lData.phone,
           customer_email: lData.email,
-          total_price: lData.budget,
+          total_price: selectedPlot?.price ?? 0,
           remarks: lData.notes,
           lead: { source: lData.source, notes: lData.notes },
         } as PurchaserRecord;
@@ -880,7 +911,14 @@ export function SiteMapper({
 
                     {mapped.map((plot) => {
                       const pts = (plot.polygon_coordinates as Point[]).map(percentToPx);
-                      const palette = STATUS_PALETTE[plot.status];
+                      const leadsCount = plotLeadsCounts?.[plot.id] || 0;
+                      const hasLeads = leadsCount > 0;
+                      const isAvailableWithLeads = (plot.status === "available" || plot.status === "pending") && hasLeads;
+
+                      const palette = isAvailableWithLeads
+                        ? STATUS_PALETTE.has_leads
+                        : STATUS_PALETTE[plot.status] || STATUS_PALETTE.available;
+
                       const isSel = selectedId === plot.id;
                       const centroid = polygonCentroid(pts);
                       
@@ -889,6 +927,19 @@ export function SiteMapper({
                       const plotWidth = Math.max(...xs) - Math.min(...xs);
                       const plotHeight = Math.max(...ys) - Math.min(...ys);
                       const fontSize = Math.max(10, Math.min(plotWidth, plotHeight) * 0.35);
+
+                      const customerName = projectBookings?.[plot.id]?.customer_name;
+                      let tooltipDetail = "";
+                      if (plot.status === "booked") {
+                        tooltipDetail = customerName ? ` · Booked to ${customerName}` : "";
+                      } else if (plot.status === "sold") {
+                        tooltipDetail = customerName ? ` · Sold to ${customerName}` : "";
+                      } else if (hasLeads) {
+                        tooltipDetail = ` · ${leadsCount} Lead${leadsCount > 1 ? "s" : ""}`;
+                      }
+
+                      const statusTitle = isAvailableWithLeads ? "Has Leads" : STATUS_LABEL[plot.status] || plot.status;
+                      const tooltipText = `Plot ${plot.plot_number} (${statusTitle})${tooltipDetail}`;
 
                       return (
                         <g
@@ -906,7 +957,7 @@ export function SiteMapper({
                             strokeWidth={isSel ? 3 : 1.5}
                             vectorEffect="non-scaling-stroke"
                           >
-                            <title>{`Plot ${plot.plot_number} (${STATUS_LABEL[plot.status]})${projectBookings?.[plot.id] ? ` · Sold to ${projectBookings[plot.id].customer_name}` : ""}`}</title>
+                            <title>{tooltipText}</title>
                           </polygon>
 
                           <text
@@ -1029,17 +1080,11 @@ export function SiteMapper({
                   {/* Legend */}
                   <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-border bg-card/95 px-3 py-2 text-[11px] shadow backdrop-blur">
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      {(Object.keys(STATUS_LABEL) as PlotStatus[])
-                        .filter(
-                          (s) =>
-                            s === "available" ||
-                            s === "reserved" ||
-                            s === "pending" ||
-                            s === "booked",
-                        )
-                        .map((s) => (
-                          <LegendDot key={s} status={s} label={STATUS_LABEL[s]} />
-                        ))}
+                      <LegendDot status="available" label="Available" />
+                      <LegendDot status="has_leads" label="Has Leads" />
+                      <LegendDot status="booked" label="Booked" />
+                      <LegendDot status="reserved" label="Reserved" />
+                      <LegendDot status="sold" label="Sold" />
                     </div>
                     {drawing && (
                       <div className="mt-1.5 border-t border-border pt-1.5 text-muted-foreground">
@@ -1135,6 +1180,12 @@ export function SiteMapper({
                   <ul className="divide-y">
                       {filteredPlots.map((p) => {
                         const isMapped = p.polygon_coordinates && p.polygon_coordinates.length >= 3;
+                        const pLeads = plotLeadsCounts?.[p.id] || 0;
+                        const pHasLeads = pLeads > 0;
+                        const pDotClass = (p.status === "available" || p.status === "pending") && pHasLeads
+                          ? STATUS_PALETTE.has_leads.dot
+                          : STATUS_PALETTE[p.status]?.dot || STATUS_PALETTE.available.dot;
+
                         return (
                           <li
                             key={p.id}
@@ -1147,14 +1198,22 @@ export function SiteMapper({
                             >
                               <div className="flex items-center gap-2 w-full">
                                 <span
-                                  className={`h-2 w-2 rounded-full shrink-0 ${STATUS_PALETTE[p.status].dot} shadow-sm`}
+                                  className={`h-2 w-2 rounded-full shrink-0 ${pDotClass} shadow-sm`}
                                 />
                                 <span className="text-sm font-medium truncate group-hover:text-terracotta transition-colors">{p.plot_number}</span>
                               </div>
                               <div className="flex items-center gap-2 text-[10px] text-muted-foreground pl-4 flex-wrap">
-                                {(p.status === "sold" || p.status === "booked") && projectBookings?.[p.id]?.customer_name ? (
-                                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold truncate">
+                                {p.status === "sold" && projectBookings?.[p.id]?.customer_name ? (
+                                  <span className="text-red-700 dark:text-red-400 font-semibold truncate">
                                     Sold to: {projectBookings[p.id].customer_name}
+                                  </span>
+                                ) : p.status === "booked" && projectBookings?.[p.id]?.customer_name ? (
+                                  <span className="text-orange-700 dark:text-orange-400 font-semibold truncate">
+                                    Booked to: {projectBookings[p.id].customer_name}
+                                  </span>
+                                ) : (p.status === "available" || p.status === "pending") && pHasLeads ? (
+                                  <span className="text-yellow-600 dark:text-yellow-300 font-bold truncate">
+                                    Has {pLeads} Lead{pLeads > 1 ? "s" : ""}
                                   </span>
                                 ) : (
                                   <span className="capitalize">{p.status}</span>
@@ -1215,10 +1274,10 @@ export function SiteMapper({
   );
 }
 
-function LegendDot({ status, label }: { status: PlotStatus; label: string }) {
+function LegendDot({ status, label }: { status: PlotStatus | "has_leads"; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className={`inline-block h-3 w-3 rounded-sm border ${STATUS_PALETTE[status].dot}`} />
+      <span className={`inline-block h-3 w-3 rounded-sm border ${STATUS_PALETTE[status]?.dot || 'bg-muted'}`} />
       <span className="text-muted-foreground">{label}</span>
     </div>
   );
@@ -1371,7 +1430,7 @@ function PlotInfoCard({
             />
           )}
           {!plot.length_ft && plot.dimensions && <Row label="Dimensions" value={plot.dimensions} />}
-          <Row label="Area" value={`${Number(plot.area_sqft).toLocaleString("en-IN")} sq.ft`} />
+          <Row label="Plot Area" value={`${Number(plot.area_sqft).toLocaleString("en-IN")} sq.ft (${(Number(plot.area_sqft) * 0.092903).toFixed(2)} sq.m)`} />
           <Row
             label="Price"
             value={
@@ -1381,7 +1440,6 @@ function PlotInfoCard({
               </span>
             }
           />
-          {plot.road_width != null && <Row label="Road width" value={`${plot.road_width} ft`} />}
           {plot.corner_plot && <Row label="Corner plot" value="Yes" />}
           {plot.remarks && (
             <div className="border-t pt-2">

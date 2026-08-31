@@ -470,13 +470,13 @@ export function MapLeadToPlotDialog({
                       </div>
                     )}
 
-                    {/* Road Width */}
-                    {activePlot.road_width && (
+                    {/* Area in Sq.Meters */}
+                    {activePlot.area_sqft && (
                       <div className="flex items-start gap-2">
                         <LandPlot className="h-4 w-4 text-terracotta mt-0.5 shrink-0" />
                         <div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Road Width</div>
-                          <div className="text-sm font-semibold">{activePlot.road_width} ft</div>
+                          <div className="text-[10px] text-muted-foreground uppercase">Area in Sq.Meters</div>
+                          <div className="text-sm font-semibold text-terracotta">{(Number(activePlot.area_sqft) * 0.092903).toFixed(2)} sq.m</div>
                         </div>
                       </div>
                     )}

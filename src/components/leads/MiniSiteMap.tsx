@@ -71,10 +71,17 @@ export function MiniSiteMap({
     queryKey: ["mini-map-layout-url", layoutPath],
     enabled: !!layoutPath,
     queryFn: async () => {
+      if (!layoutPath) return null;
+      if (layoutPath.startsWith("http://") || layoutPath.startsWith("https://")) {
+        return layoutPath;
+      }
       const { data } = await supabase.storage
         .from("project-layouts")
         .createSignedUrl(layoutPath!, 3600);
-      return data?.signedUrl ?? null;
+      if (data?.signedUrl) return data.signedUrl;
+
+      // Fallback to old project storage public URL for cloned projects
+      return `https://zolbuckwnjsxfgqqkcjj.supabase.co/storage/v1/object/public/project-layouts/${layoutPath}`;
     },
   });
 

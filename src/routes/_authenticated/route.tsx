@@ -23,34 +23,104 @@ import {
   FolderOpen,
   Landmark,
   BarChart3,
+  PieChart,
+  FileCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { NotificationBell } from "@/components/NotificationBell";
 
 export const Route = createFileRoute("/_authenticated")({
-  ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
+    // If running on the server during SSR, do NOT redirect to /auth because localStorage is client-side only
+    if (typeof window === "undefined") {
+      return { user: null as any };
+    }
+
+    // 1. Check local session from storage (instant on page refresh, prevents logout race)
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session?.user) {
+      return { user: sessionData.session.user };
+    }
+
+    // 2. If not immediately in local cache, verify with getUser()
+    try {
+      const { data: userData, error } = await supabase.auth.getUser();
+      if (!error && userData?.user) {
+        return { user: userData.user };
+      }
+    } catch (e) {
+      console.warn("Auth check during beforeLoad:", e);
+    }
+
+    throw redirect({ to: "/auth" });
   },
   component: AuthedLayout,
 });
 
 function AuthedLayout() {
-  const { user } = Route.useRouteContext();
+  const context = Route.useRouteContext();
   const router = useRouter();
   const qc = useQueryClient();
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
+
+  const [currentUser, setCurrentUser] = useState<any>(context?.user || null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(!context?.user);
 
   useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname]);
+    let isMounted = true;
+
+    async function checkClientAuth() {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          if (isMounted) {
+            setCurrentUser(sessionData.session.user);
+            setIsCheckingAuth(false);
+          }
+          return;
+        }
+
+        const { data: userData, error } = await supabase.auth.getUser();
+        if (!error && userData?.user) {
+          if (isMounted) {
+            setCurrentUser(userData.user);
+            setIsCheckingAuth(false);
+          }
+          return;
+        }
+
+        // Only redirect if definitely not authenticated on client
+        if (isMounted) {
+          router.navigate({ to: "/auth", replace: true });
+        }
+      } catch (err) {
+        console.error("Client auth check error:", err);
+        if (isMounted) {
+          router.navigate({ to: "/auth", replace: true });
+        }
+      } finally {
+        if (isMounted) setIsCheckingAuth(false);
+      }
+    }
+
+    if (!currentUser) {
+      checkClientAuth();
+    } else {
+      setIsCheckingAuth(false);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, router]);
+
+  const user = currentUser;
 
   const { data: role } = useQuery({
-    queryKey: ["role", user.id],
+    queryKey: ["role", user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
       const { data } = await supabase.rpc("get_primary_role", { _user_id: user.id });
       return (data as string) ?? "employee";
@@ -58,7 +128,8 @@ function AuthedLayout() {
   });
 
   const { data: profile } = useQuery({
-    queryKey: ["profile", user.id],
+    queryKey: ["profile", user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
       return data;
@@ -72,23 +143,59 @@ function AuthedLayout() {
     router.navigate({ to: "/auth", replace: true });
   }
 
+  if (isCheckingAuth && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-3 border-terracotta border-t-transparent shadow-xs" />
+          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+            Restoring Session...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
   const nav = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/approvals", label: "Approvals", icon: FileCheck },
+    { to: "/project-stats", label: "Project Stats", icon: PieChart },
     { to: "/projects", label: "Projects", icon: FolderKanban },
     { to: "/bookings", label: "Bookings", icon: ClipboardList },
     { to: "/installments", label: "Installments", icon: WalletCards },
+    { to: "/cancellations", label: "Cancellations", icon: AlertTriangle },
     { to: "/leads", label: "Leads", icon: Contact2 },
     { to: "/documents", label: "Documents", icon: FolderOpen },
     { to: "/team", label: "Team", icon: Users },
     { to: "/analytics", label: "Analytics", icon: BarChart3 },
   ] as const;
 
+  const { data: pendingApprovalCount = 0 } = useQuery({
+    queryKey: ["pending_approval_count", role],
+    enabled: !!role,
+    queryFn: async () => {
+      let q = supabase.from("bookings").select("id", { count: "exact" }).neq("status", "rejected").neq("status", "cancelled");
+      if (role === "manager") q = q.eq("approval_stage", "sales_head_approval");
+      else if (role === "crm") q = q.eq("approval_stage", "crm_verification");
+      else if (role === "accounts") q = q.eq("approval_stage", "accounts_payment");
+      else if (role === "admin" || role === "super_admin" || role === "management") q = q.neq("approval_stage", "completed");
+      else q = q.eq("approval_stage", "sales_head_approval");
+
+      const { count } = await q;
+      return count || 0;
+    },
+  });
+
   const visibleNav = [
     ...nav,
-    ...(role === "admin" || role === "super_admin" || role === "management"
+    ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts"
       ? [{ to: "/treasury" as const, label: "Treasury", icon: Landmark }]
       : []),
-    ...(role === "admin" || role === "super_admin" || role === "manager" || role === "management"
+    ...(role === "admin" || role === "super_admin" || role === "manager" || role === "management" || role === "accounts" || role === "crm"
       ? [
           { to: "/incentives" as const, label: "Incentives", icon: Sparkles },
           { to: "/messages" as const, label: "Messages", icon: MessageSquare },
@@ -96,7 +203,7 @@ function AuthedLayout() {
       : role === "employee"
         ? [{ to: "/my-incentives" as const, label: "Incentives", icon: Sparkles }]
         : []),
-    ...(role === "admin" || role === "super_admin" || role === "management"
+    ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts"
       ? [{ to: "/visit-proofs" as const, label: "Visit Proofs", icon: MapPinned }]
       : []),
   ];
@@ -111,11 +218,14 @@ function AuthedLayout() {
         <div className="p-6 border-b border-border/50 flex items-center justify-between">
           <div>
             <Link to="/dashboard" className="inline-flex items-center gap-2.5 text-display text-2xl font-bold text-ink dark:text-foreground group">
-              <img src="/logo.png" alt="Terra Logo" className="h-7 w-7 rounded-lg object-cover shadow-2xs border border-border/60 group-hover:scale-105 transition-transform" />
-              Terra
+              <img src="/ark-logo.png" alt="Ark Logo" className="h-8 w-auto object-contain shadow-2xs group-hover:scale-105 transition-transform" />
+              <div className="flex flex-col">
+                <span className="font-extrabold text-base tracking-tight leading-none text-foreground">ARK</span>
+                <span className="text-[8.5px] text-muted-foreground tracking-wider uppercase font-bold mt-0.5">Builders & Developers</span>
+              </div>
             </Link>
-            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-medium">
-              Developer Platform
+            <p className="text-[9px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-semibold text-terracotta">
+              Site & Financial Platform
             </p>
           </div>
           <NotificationBell userId={user.id} />
@@ -138,7 +248,12 @@ function AuthedLayout() {
                 }`}
               >
                 <Icon className={`h-4 w-4 ${active ? "text-terracotta" : "text-muted-foreground"}`} />
-                {item.label}
+                <span className="flex-1 truncate">{item.label}</span>
+                {item.to === "/approvals" && pendingApprovalCount > 0 && (
+                  <span className="h-5 px-1.5 min-w-[20px] rounded-full bg-terracotta text-white text-[10px] font-bold flex items-center justify-center shadow-xs shrink-0">
+                    {pendingApprovalCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -156,131 +271,35 @@ function AuthedLayout() {
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={signOut} className="w-full justify-start mt-1 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-            <LogOut className="h-3.5 w-3.5 mr-2" /> Sign out
-          </Button>
-        </div>
-      </aside>
-
-      {/* Mobile Menu Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 md:hidden transition-opacity duration-300 animate-in fade-in"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-
-      {/* Mobile Menu Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-card border-r shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out md:hidden ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="p-4 border-b flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Close Button matching position of hamburger */}
-            <button
-              onClick={() => setIsOpen(false)}
-              className="flex flex-col justify-center items-center w-9 h-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer relative"
-              aria-label="Close Menu"
-            >
-              <div className="w-4 h-4 flex flex-col justify-between items-center relative">
-                <span className="block h-[2px] w-4 bg-foreground rounded transition-all duration-300 ease-out origin-center rotate-45 absolute top-[7px]" />
-                <span className="block h-[2px] w-4 bg-foreground rounded transition-all duration-300 ease-out opacity-0" />
-                <span className="block h-[2px] w-4 bg-foreground rounded transition-all duration-300 ease-out origin-center -rotate-45 absolute top-[7px]" />
-              </div>
-            </button>
-            <Link to="/dashboard" className="text-display text-xl" onClick={() => setIsOpen(false)}>
-              Terra
-            </Link>
-          </div>
-        </div>
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {visibleNav.map((item, index) => {
-            const active =
-              location.pathname === item.to ||
-              ((item.to as string) !== "/" && location.pathname.startsWith(item.to));
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`flex items-center gap-3 py-2.5 rounded-r-md text-sm border-l-2 transition-all duration-300 transform ${
-                  isOpen ? "translate-x-0 opacity-100" : "-translate-x-4 opacity-0"
-                } ${
-                  active
-                    ? "bg-terracotta/[0.06] text-terracotta font-semibold border-terracotta pl-3.5 pr-3"
-                    : "text-foreground/80 hover:bg-muted/60 hover:text-foreground border-transparent pl-4 pr-3"
-                }`}
-                style={{
-                  transitionDelay: isOpen ? `${index * 40}ms` : "0ms",
-                }}
-                onClick={() => setIsOpen(false)}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="p-3 border-t bg-muted/20">
-          <div className="px-3 py-2">
-            <div className="text-sm font-medium truncate">{profile?.full_name ?? user.email}</div>
-            <div className="text-xs text-muted-foreground capitalize">
-              {role?.replace("_", " ")}
-            </div>
-          </div>
           <Button
             variant="ghost"
-            size="sm"
-            onClick={() => {
-              signOut();
-              setIsOpen(false);
-            }}
-            className="w-full justify-start mt-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+            className="w-full justify-start gap-3 text-destructive hover:bg-destructive/10 hover:text-destructive text-xs font-medium cursor-pointer rounded-lg"
+            onClick={signOut}
           >
-            <LogOut className="h-4 w-4 mr-2" /> Sign out
+            <LogOut className="h-4 w-4" />
+            Sign Out
           </Button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 min-w-0 bg-background relative overflow-hidden">
-        {/* Ambient Mesh Gradient Backdrops matching landing page */}
-        <div className="pointer-events-none fixed top-0 right-0 w-[600px] h-[600px] bg-gradient-to-bl from-terracotta/12 via-amber-500/8 to-transparent blur-[140px] -z-10" />
-        <div className="pointer-events-none fixed bottom-0 left-64 w-[600px] h-[600px] bg-gradient-to-tr from-emerald-500/10 via-teal-500/6 to-transparent blur-[140px] -z-10" />
-        <div className="pointer-events-none fixed top-1/2 left-1/3 w-[400px] h-[400px] bg-gradient-to-r from-sky-500/5 via-indigo-500/5 to-transparent blur-[120px] -z-10" />
-
-        <header className="md:hidden border-b border-border/60 p-4 flex items-center justify-between bg-card/85 backdrop-blur-md sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            {/* Hamburger Button */}
-            <button
-              onClick={() => setIsOpen(true)}
-              className="flex flex-col justify-center items-center w-9 h-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground md:hidden transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer relative"
-              aria-label="Open Menu"
-            >
-              <div className="w-4 h-4 flex flex-col justify-between items-center relative">
-                <span className="block h-[2px] w-4 bg-foreground rounded transition-all duration-300 ease-out origin-center" />
-                <span className="block h-[2px] w-4 bg-foreground rounded transition-all duration-300 ease-out my-[3px]" />
-                <span className="block h-[2px] w-4 bg-foreground rounded transition-all duration-300 ease-out origin-center" />
-              </div>
-            </button>
-            <Link to="/dashboard" className="text-display text-xl font-bold">
-              Terra
-            </Link>
-          </div>
-          <div className="flex items-center gap-1">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* Mobile Header */}
+        <header className="md:hidden border-b border-border/50 bg-card p-4 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+          <Link to="/dashboard" className="flex items-center gap-2 text-base font-extrabold text-ink dark:text-foreground">
+            <img src="/ark-logo.png" alt="Ark Logo" className="h-6 w-auto object-contain" />
+            <span>ARK BUILDERS</span>
+          </Link>
+          <div className="flex items-center gap-2">
             <NotificationBell userId={user.id} />
-            <Button variant="ghost" size="sm" onClick={signOut}>
-              <LogOut className="h-4 w-4" />
-            </Button>
           </div>
         </header>
-        <div className="max-w-7xl mx-auto p-6 md:p-10 relative z-10">
+
+        {/* Dynamic Page Outlet */}
+        <main className="flex-1 p-4 md:p-8 max-w-7xl w-full mx-auto">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
-

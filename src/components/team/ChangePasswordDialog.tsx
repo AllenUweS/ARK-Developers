@@ -173,7 +173,7 @@ export function ChangePasswordDialog({
               <KeyRound className="h-5 w-5" />
             </div>
             <div>
-              <DialogTitle className="text-xl font-bold text-display">Change Employee Password</DialogTitle>
+              <DialogTitle className="text-xl font-bold text-display">Change Executive Password</DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
                 Update login credentials for <span className="font-semibold text-foreground">{employee.full_name || employee.email}</span>
               </DialogDescription>

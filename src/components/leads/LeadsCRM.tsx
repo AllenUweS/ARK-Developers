@@ -58,8 +58,8 @@ export function LeadsCRM({ userId }: { userId: string }) {
     },
   });
 
-  const isAdmin = role === "admin" || role === "super_admin";
-  const isManager = role === "manager";
+  const isAdmin = role === "admin" || role === "super_admin" || role === "crm";
+  const isManager = role === "manager" || role === "management";
   const isPlainEmployee = !!role && !isAdmin && !isManager;
 
   const { data: profiles, isLoading: profilesLoading } = useQuery({
@@ -724,7 +724,7 @@ export function LeadsCRM({ userId }: { userId: string }) {
               {stats.total} leads{" "}
               {isShowingEmployee
                 ? "for this selection"
-                : `across ${employeeSummaries.length} employee${employeeSummaries.length === 1 ? "" : "s"}`}
+                : `across ${employeeSummaries.length} executive${employeeSummaries.length === 1 ? "" : "s"}`}
             </p>
           </div>
           {addLeadButton}

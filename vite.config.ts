@@ -6,6 +6,15 @@ import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
 
 export default defineConfig({
+  server: {
+    proxy: {
+      "/api/tally": {
+        target: "http://localhost:9000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/tally/, ""),
+      },
+    },
+  },
   plugins: [
     tsconfigPaths(),
     tailwindcss(),

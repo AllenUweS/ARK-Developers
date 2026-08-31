@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { printElement } from "@/lib/printUtils";
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,6 +24,10 @@ import {
   AlertCircle,
   Sparkles,
   Loader2,
+  CreditCard,
+  Phone,
+  Mail,
+  MapPin,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -52,6 +57,7 @@ export function TransferDetailPage() {
   const { user } = Route.useRouteContext();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const printCertRef = useRef<HTMLDivElement>(null);
 
   const [repayModalOpen, setRepayModalOpen] = useState(false);
   const [repayAmount, setRepayAmount] = useState("");
@@ -67,7 +73,7 @@ export function TransferDetailPage() {
   });
 
   const isManagementOrAdmin =
-    role === "admin" || role === "super_admin" || role === "management";
+    role === "admin" || role === "super_admin" || role === "management" || role === "accounts";
 
   // Fetch Profiles
   const { data: profiles = [] } = useQuery({
@@ -116,6 +122,34 @@ export function TransferDetailPage() {
         .from("projects")
         .select("*, plots(id, price, status)")
         .eq("id", rawTransfer.target_project_id)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  // Fetch Source Bank Account
+  const { data: sourceBankAccount } = useQuery({
+    queryKey: ["bank-account-source", rawTransfer?.source_bank_account_id],
+    enabled: !!rawTransfer?.source_bank_account_id,
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("project_bank_accounts")
+        .select("*")
+        .eq("id", rawTransfer.source_bank_account_id)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  // Fetch Target Bank Account
+  const { data: targetBankAccount } = useQuery({
+    queryKey: ["bank-account-target", rawTransfer?.target_bank_account_id],
+    enabled: !!rawTransfer?.target_bank_account_id,
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("project_bank_accounts")
+        .select("*")
+        .eq("id", rawTransfer.target_bank_account_id)
         .maybeSingle();
       return data;
     },
@@ -261,10 +295,18 @@ export function TransferDetailPage() {
     );
   }
 
+  const handlePrintCertificate = () => {
+    printElement(printCertRef.current, {
+      title: `ARK_Capital_Transfer_Audit_Certificate_${transfer.id.slice(0, 8)}`,
+      pageSize: "A4 portrait",
+      pageMargin: "8mm 10mm",
+    });
+  };
+
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-12">
-      {/* Header & Back Action */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-5">
+    <div className="space-y-8 max-w-6xl mx-auto pb-16">
+      {/* Top Breadcrumb Navigation */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
             to="/treasury"
@@ -272,6 +314,14 @@ export function TransferDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
+          <img
+            src="/ark-logo.png"
+            alt="Ark Logo"
+            className="h-10 w-auto object-contain shrink-0 hidden sm:block"
+            onError={(e: any) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
@@ -279,7 +329,7 @@ export function TransferDetailPage() {
               </span>
               <span className="text-xs text-muted-foreground">ID: #{transfer.id.slice(0, 8)}</span>
             </div>
-            <h1 className="text-display text-3xl font-bold tracking-tight mt-1">
+            <h1 className="text-display text-2xl sm:text-3xl font-bold tracking-tight mt-1">
               Capital Transfer Inspection
             </h1>
           </div>
@@ -289,8 +339,8 @@ export function TransferDetailPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.print()}
-            className="text-xs gap-1.5 border-border/80"
+            onClick={handlePrintCertificate}
+            className="text-xs gap-1.5 border-border/80 cursor-pointer"
           >
             <Printer className="h-3.5 w-3.5" /> Print Audit Certificate
           </Button>
@@ -302,7 +352,7 @@ export function TransferDetailPage() {
                 setRepayAmount(String(remainingBalance));
                 setRepayModalOpen(true);
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm cursor-pointer"
             >
               <RotateCcw className="h-3.5 w-3.5" /> Repay Funds Back
             </Button>
@@ -329,6 +379,25 @@ export function TransferDetailPage() {
               <h3 className="text-xl font-bold">{sourceProject?.name || "Source Project"}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Code: {sourceProject?.code || "N/A"}</p>
             </div>
+
+            {/* Bank Account Details */}
+            {sourceBankAccount ? (
+              <div className="p-2.5 rounded-lg bg-terracotta/10 border border-terracotta/20 text-xs space-y-0.5">
+                <p className="font-semibold text-terracotta flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5" /> {sourceBankAccount.bank_name} ({sourceBankAccount.account_type})
+                </p>
+                <p className="font-mono text-[11px] text-foreground">
+                  A/C: {sourceBankAccount.account_number}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  IFSC: {sourceBankAccount.ifsc_code} • {sourceBankAccount.branch_name || "Main Branch"}
+                </p>
+              </div>
+            ) : (
+              <div className="p-2 rounded bg-muted/40 text-[11px] text-muted-foreground italic">
+                General Treasury Account
+              </div>
+            )}
 
             <div className="pt-3 border-t border-border/50 grid grid-cols-2 gap-2 text-xs">
               <div>
@@ -375,6 +444,25 @@ export function TransferDetailPage() {
               <h3 className="text-xl font-bold">{targetProject?.name || "Target Project"}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Code: {targetProject?.code || "N/A"}</p>
             </div>
+
+            {/* Bank Account Details */}
+            {targetBankAccount ? (
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-0.5">
+                <p className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5" /> {targetBankAccount.bank_name} ({targetBankAccount.account_type})
+                </p>
+                <p className="font-mono text-[11px] text-foreground">
+                  A/C: {targetBankAccount.account_number}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  IFSC: {targetBankAccount.ifsc_code} • {targetBankAccount.branch_name || "Main Branch"}
+                </p>
+              </div>
+            ) : (
+              <div className="p-2 rounded bg-muted/40 text-[11px] text-muted-foreground italic">
+                General Treasury Account
+              </div>
+            )}
 
             <div className="pt-3 border-t border-border/50 grid grid-cols-2 gap-2 text-xs">
               <div>
@@ -680,6 +768,183 @@ export function TransferDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* HIDDEN A4 CAPITAL TRANSFER AUDIT CERTIFICATE FOR PRINTING */}
+      <div className="hidden">
+        <div
+          ref={printCertRef}
+          className="print-document bg-white text-slate-900 p-8 font-sans leading-relaxed text-xs space-y-5"
+        >
+          {/* HEADER */}
+          <div
+            className="border-b-2 border-slate-900 pb-3 flex items-center gap-5"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              gap: "20px",
+              borderBottom: "2px solid #0f172a",
+              paddingBottom: "12px",
+            }}
+          >
+            <img
+              src="/ark-logo.png"
+              alt="Ark Logo"
+              className="h-16 w-auto object-contain shrink-0"
+              style={{
+                height: "65px",
+                width: "auto",
+                maxWidth: "160px",
+                objectFit: "contain",
+                flexShrink: 0,
+                display: "block",
+              }}
+              onError={(e: any) => { e.currentTarget.style.display = "none"; }}
+            />
+            <div className="flex-1 space-y-0.5" style={{ flex: "1 1 0%", minWidth: 0 }}>
+              <h1 className="font-serif font-black text-2xl text-slate-900 tracking-tight leading-none" style={{ margin: 0, fontSize: "22px", fontWeight: 900, color: "#0f172a", lineHeight: 1.1 }}>
+                ARK BUILDERS & DEVELOPERS
+              </h1>
+              <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider" style={{ margin: "2px 0 0 0", fontSize: "11px", fontWeight: 700, color: "#9a3412", letterSpacing: "0.5px" }}>
+                Corporate Treasury & Financial Controls Department
+              </p>
+              <p className="text-[10px] text-slate-600" style={{ margin: "2px 0 0 0", fontSize: "10px", color: "#475569" }}>
+                #4th Floor, SVB City Center, Above Yes Bank, Club Road, HUBBALLI – 580029
+              </p>
+            </div>
+            <div className="text-right space-y-1" style={{ textAlign: "right", flexShrink: 0 }}>
+              <span className="inline-block px-3 py-1 bg-purple-100 text-purple-900 border border-purple-300 font-mono font-bold text-[11px] rounded-md">
+                AUDIT CERTIFICATE
+              </span>
+              <div className="text-[10px] font-mono text-slate-600">Ref: TRF-{transfer.id.slice(0, 8).toUpperCase()}</div>
+              <div className="text-[10px] text-slate-500">Date: {new Date(transfer.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div>
+            </div>
+          </div>
+
+          {/* TITLE BANNER */}
+          <div className="bg-[#0B2545] text-white p-3 rounded-lg flex items-center justify-between font-bold text-xs uppercase tracking-wider">
+            <span>INTER-PROJECT CAPITAL REALLOCATION AUDIT CERTIFICATE</span>
+            <span className="font-mono text-amber-300">AMOUNT: {money(Number(transfer.amount))}</span>
+          </div>
+
+          {/* SOURCE AND TARGET BOXES */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* SOURCE */}
+            <div className="border border-slate-300 rounded-lg p-3.5 bg-slate-50 space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block border-b border-slate-200 pb-1">
+                ORIGIN (CAPITAL OUTFLOW)
+              </span>
+              <div>
+                <span className="text-[10px] text-slate-500 block">Project Name & Code</span>
+                <span className="font-bold text-slate-900 text-sm">{sourceProject?.name || "Source Project"} ({sourceProject?.code || "N/A"})</span>
+              </div>
+              <div className="text-[11px] space-y-0.5 pt-1">
+                <div><span className="font-medium text-slate-600">Bank Name:</span> <strong>{sourceBankAccount?.bank_name || "General Treasury"}</strong></div>
+                <div><span className="font-medium text-slate-600">Account No:</span> <strong className="font-mono">{sourceBankAccount?.account_number || "N/A"}</strong></div>
+                <div><span className="font-medium text-slate-600">IFSC Code:</span> <strong className="font-mono">{sourceBankAccount?.ifsc_code || "N/A"}</strong></div>
+              </div>
+            </div>
+
+            {/* TARGET */}
+            <div className="border border-slate-300 rounded-lg p-3.5 bg-emerald-50/50 space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block border-b border-emerald-200 pb-1">
+                BENEFICIARY (CAPITAL INFLOW)
+              </span>
+              <div>
+                <span className="text-[10px] text-slate-500 block">Project Name & Code</span>
+                <span className="font-bold text-slate-900 text-sm">{targetProject?.name || "Target Project"} ({targetProject?.code || "N/A"})</span>
+              </div>
+              <div className="text-[11px] space-y-0.5 pt-1">
+                <div><span className="font-medium text-slate-600">Bank Name:</span> <strong>{targetBankAccount?.bank_name || "General Treasury"}</strong></div>
+                <div><span className="font-medium text-slate-600">Account No:</span> <strong className="font-mono">{targetBankAccount?.account_number || "N/A"}</strong></div>
+                <div><span className="font-medium text-slate-600">IFSC Code:</span> <strong className="font-mono">{targetBankAccount?.ifsc_code || "N/A"}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          {/* FINANCIAL & TERMS SUMMARY */}
+          <div className="border border-slate-300 rounded-lg p-4 bg-white space-y-3">
+            <div className="grid grid-cols-3 gap-3 text-center border-b border-slate-200 pb-3">
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-bold block">Total Capital Shifted</span>
+                <span className="text-base font-black text-slate-900 font-mono">{money(Number(transfer.amount))}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-bold block">Total Repaid Back</span>
+                <span className="text-base font-black text-emerald-700 font-mono">{money(effectiveRepaid)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-bold block">Outstanding Balance</span>
+                <span className="text-base font-black text-amber-700 font-mono">{money(remainingBalance)}</span>
+              </div>
+            </div>
+
+            <div className="text-[11px] space-y-1.5 pt-1">
+              <div><span className="font-bold text-slate-800">Declared Transfer Purpose:</span> <span className="text-slate-900">{transfer.purpose || "Inter-project liquidity reallocation for site development"}</span></div>
+              {transfer.repayment_due_date && (
+                <div><span className="font-bold text-slate-800">Scheduled Repayment Deadline:</span> <span className="text-slate-900">{new Date(transfer.repayment_due_date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</span></div>
+              )}
+              <div><span className="font-bold text-slate-800">Accounting Ledger Linkage:</span> <span className="text-slate-900 font-mono">Tally Prime Port 9000 Journal Voucher ID #TRF-{transfer.id.slice(0, 8).toUpperCase()}</span></div>
+            </div>
+          </div>
+
+          {/* REPAYMENT HISTORY TABLE IF ANY */}
+          {repayments.length > 0 && (
+            <div className="space-y-2">
+              <span className="font-bold text-xs text-slate-900 uppercase tracking-wider block">
+                Recorded Repayments History
+              </span>
+              <table className="w-full border border-slate-300 text-left text-[11px] rounded-lg overflow-hidden">
+                <thead className="bg-slate-100 border-b border-slate-300 font-bold text-[10px] uppercase">
+                  <tr>
+                    <th className="p-2 border-r border-slate-300">#</th>
+                    <th className="p-2 border-r border-slate-300">Repayment Date</th>
+                    <th className="p-2 border-r border-slate-300">Amount (₹)</th>
+                    <th className="p-2">Notes & Remarks</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {repayments.map((r: any, idx: number) => (
+                    <tr key={r.id}>
+                      <td className="p-2 border-r border-slate-300 font-bold">{idx + 1}</td>
+                      <td className="p-2 border-r border-slate-300">{new Date(r.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
+                      <td className="p-2 border-r border-slate-300 font-mono font-bold text-emerald-800">{money(Number(r.amount))}</td>
+                      <td className="p-2 text-slate-700">{r.notes || "Repayment transaction"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* AUTHORIZATION SIGNATURES */}
+          <div className="pt-6 border-t border-slate-300 grid grid-cols-3 gap-6 text-center text-xs">
+            <div className="space-y-5">
+              <div className="h-7 border-b border-dashed border-slate-400 flex items-end justify-center pb-1 text-[10px] text-slate-500 font-medium">
+                Verified Electronic Entry
+              </div>
+              <span className="font-bold text-slate-800 block text-[11px]">Accounts Executive</span>
+            </div>
+            <div className="space-y-5">
+              <div className="h-7 border-b border-dashed border-slate-400 flex items-end justify-center pb-1 text-[10px] text-slate-500 font-medium">
+                Treasury Certified
+              </div>
+              <span className="font-bold text-slate-800 block text-[11px]">Finance & Treasury Head</span>
+            </div>
+            <div className="space-y-5">
+              <div className="h-7 border-b border-dashed border-slate-400 flex items-end justify-center pb-1 text-[10px] text-slate-500 font-medium">
+                Authorized Approval
+              </div>
+              <span className="font-bold text-slate-800 block text-[11px]">Managing Director / Partner</span>
+            </div>
+          </div>
+
+          <div className="text-center text-[9px] text-slate-400 pt-2">
+            ARK Builders & Developers ERP • Official Treasury Audit Certificate • Generated on {new Date().toLocaleString("en-IN")}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

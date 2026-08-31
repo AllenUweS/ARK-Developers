@@ -45,31 +45,36 @@ export const STATUS_LABEL: Record<PlotStatus, string> = {
 /** CSS-variable-driven palette so the map matches the app's existing
  *  design tokens (--plot-available, --plot-pending, etc.) instead of
  *  hard-coded hex values. */
-export const STATUS_PALETTE: Record<PlotStatus, { fill: string; stroke: string; dot: string }> = {
+export const STATUS_PALETTE: Record<PlotStatus | "has_leads", { fill: string; stroke: string; dot: string }> = {
   available: {
     fill: "color-mix(in oklch, var(--plot-available) 35%, transparent)",
     stroke: "var(--plot-available)",
-    dot: "bg-plot-available",
+    dot: "bg-emerald-500",
+  },
+  has_leads: {
+    fill: "color-mix(in oklch, var(--plot-has-leads) 55%, transparent)",
+    stroke: "var(--plot-has-leads)",
+    dot: "bg-yellow-300 border border-yellow-400",
   },
   pending: {
     fill: "color-mix(in oklch, var(--plot-pending) 40%, transparent)",
     stroke: "var(--plot-pending)",
-    dot: "bg-plot-pending",
+    dot: "bg-amber-500",
   },
   reserved: {
     fill: "color-mix(in oklch, var(--plot-reserved) 35%, transparent)",
     stroke: "var(--plot-reserved)",
-    dot: "bg-plot-reserved",
+    dot: "bg-blue-500",
   },
   booked: {
     fill: "color-mix(in oklch, var(--plot-booked) 35%, transparent)",
     stroke: "var(--plot-booked)",
-    dot: "bg-plot-booked",
+    dot: "bg-orange-500",
   },
   sold: {
-    fill: "color-mix(in oklch, var(--plot-booked) 45%, transparent)",
-    stroke: "var(--plot-booked)",
-    dot: "bg-plot-booked",
+    fill: "color-mix(in oklch, var(--plot-sold) 40%, transparent)",
+    stroke: "var(--plot-sold)",
+    dot: "bg-red-600",
   },
   cancelled: {
     fill: "color-mix(in oklch, var(--muted-foreground) 25%, transparent)",

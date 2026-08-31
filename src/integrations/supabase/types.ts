@@ -18,8 +18,15 @@ export type Database = {
         Row: {
           aadhaar_number: string | null
           advance_paid: number
+          agreed_incentive_amount: number | null
+          incentive_amount: number | null
+          approval_history: Json | null
+          approval_stage: string | null
           approved_at: string | null
           approved_by: string | null
+          attribution_type: string | null
+          bdo_id: string | null
+          external_bdo_name: string | null
           booking_amount: number
           booking_date: string
           created_at: string
@@ -37,11 +44,17 @@ export type Database = {
           sales_executive_id: string | null
           status: Database["public"]["Enums"]["booking_status"]
           total_price: number
+          govt_amount: number | null
+          company_amount: number | null
           updated_at: string
         }
         Insert: {
           aadhaar_number?: string | null
           advance_paid?: number
+          agreed_incentive_amount?: number | null
+          incentive_amount?: number | null
+          approval_history?: Json | null
+          approval_stage?: string | null
           approved_at?: string | null
           approved_by?: string | null
           booking_amount: number
@@ -61,11 +74,17 @@ export type Database = {
           sales_executive_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
           total_price: number
+          govt_amount?: number | null
+          company_amount?: number | null
           updated_at?: string
         }
         Update: {
           aadhaar_number?: string | null
           advance_paid?: number
+          agreed_incentive_amount?: number | null
+          incentive_amount?: number | null
+          approval_history?: Json | null
+          approval_stage?: string | null
           approved_at?: string | null
           approved_by?: string | null
           booking_amount?: number
@@ -85,6 +104,8 @@ export type Database = {
           sales_executive_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
           total_price?: number
+          govt_amount?: number | null
+          company_amount?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -96,6 +117,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      bdo_partners: {
+        Row: {
+          account_number: string | null
+          agency_name: string | null
+          bank_name: string | null
+          bdo_code: string | null
+          commission_rate: number | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          ifsc_code: string | null
+          is_active: boolean | null
+          name: string
+          notes: string | null
+          phone: string | null
+          upi_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_number?: string | null
+          agency_name?: string | null
+          bank_name?: string | null
+          bdo_code?: string | null
+          commission_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          ifsc_code?: string | null
+          is_active?: boolean | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          upi_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_number?: string | null
+          agency_name?: string | null
+          bank_name?: string | null
+          bdo_code?: string | null
+          commission_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          ifsc_code?: string | null
+          is_active?: boolean | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          upi_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       contact_messages: {
         Row: {
@@ -341,6 +419,136 @@ export type Database = {
         }
         Relationships: []
       }
+      project_bank_accounts: {
+        Row: {
+          id: string
+          project_id: string
+          bank_name: string
+          account_name: string
+          account_number: string
+          ifsc_code: string
+          branch_name: string | null
+          account_type: string
+          is_primary: boolean
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          bank_name: string
+          account_name: string
+          account_number: string
+          ifsc_code: string
+          branch_name?: string | null
+          account_type?: string
+          is_primary?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          bank_name?: string
+          account_name?: string
+          account_number?: string
+          ifsc_code?: string
+          branch_name?: string | null
+          account_type?: string
+          is_primary?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_bank_accounts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      project_fund_transfers: {
+        Row: {
+          id: string
+          source_project_id: string
+          target_project_id: string
+          source_bank_account_id: string | null
+          target_bank_account_id: string | null
+          amount: number
+          repaid_amount: number
+          purpose: string | null
+          status: string
+          transferred_by: string
+          repayment_due_date: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          source_project_id: string
+          target_project_id: string
+          source_bank_account_id?: string | null
+          target_bank_account_id?: string | null
+          amount: number
+          repaid_amount?: number
+          purpose?: string | null
+          status?: string
+          transferred_by: string
+          repayment_due_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          source_project_id?: string
+          target_project_id?: string
+          source_bank_account_id?: string | null
+          target_bank_account_id?: string | null
+          amount?: number
+          repaid_amount?: number
+          purpose?: string | null
+          status?: string
+          transferred_by?: string
+          repayment_due_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_fund_transfers_source_project_id_fkey"
+            columns: ["source_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_fund_transfers_target_project_id_fkey"
+            columns: ["target_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_fund_transfers_source_bank_account_id_fkey"
+            columns: ["source_bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "project_bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_fund_transfers_target_bank_account_id_fkey"
+            columns: ["target_bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "project_bank_accounts"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -381,7 +589,7 @@ export type Database = {
       is_admin_or_super: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "super_admin" | "admin" | "employee" | "manager" | "management"
+      app_role: "super_admin" | "admin" | "employee" | "manager" | "management" | "accounts" | "crm"
       booking_status:
         | "pending"
         | "approved"
@@ -532,7 +740,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["super_admin", "admin", "employee", "manager", "management"],
+      app_role: ["super_admin", "admin", "employee", "manager", "management", "accounts", "crm"],
       booking_status: [
         "pending",
         "approved",

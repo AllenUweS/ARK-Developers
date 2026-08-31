@@ -4,6 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import {
+  getPhoneValidationError,
+  isValidEmail,
+  sanitizePhoneInput,
+  sanitizePositiveNumber,
+} from "@/lib/formValidation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -15,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { sendBookingConfirmationWhatsApp } from "@/lib/whatsappService";
 import { useQueryClient } from "@tanstack/react-query";
 import type { PlotRow, PurchaserRecord } from "./types";
 
@@ -87,7 +96,14 @@ export function RecordPurchaserDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.customer_name.trim()) return toast.error("Customer name is required");
-    if (!form.customer_phone.trim()) return toast.error("Customer phone is required");
+
+    const cleanPhone = sanitizePhoneInput(form.customer_phone);
+    const phoneErr = getPhoneValidationError(cleanPhone);
+    if (phoneErr) return toast.error(phoneErr);
+
+    if (form.customer_email && form.customer_email.trim() && !isValidEmail(form.customer_email)) {
+      return toast.error("Please enter a valid email address.");
+    }
 
     setSubmitting(true);
     try {
@@ -100,7 +116,7 @@ export function RecordPurchaserDialog({
           .from("bookings")
           .update({
             customer_name: form.customer_name.trim(),
-            customer_phone: form.customer_phone.trim(),
+            customer_phone: cleanPhone,
             customer_email: form.customer_email.trim() || null,
             customer_address: form.customer_address.trim() || null,
             total_price: totalPriceNum,
@@ -179,6 +195,30 @@ export function RecordPurchaserDialog({
         });
       }
 
+      // Auto dispatch WhatsApp Booking Confirmation
+      try {
+        const res = await sendBookingConfirmationWhatsApp({
+          customerPhone: form.customer_phone.trim(),
+          customerName: form.customer_name.trim(),
+          projectName: "Project Plot",
+          plotNumber: plot.plot_number,
+          totalPrice: totalPriceNum,
+          bookingAmountPaid: Number(form.advance_paid) || 0,
+        });
+        if (res.success) {
+          toast.success("WhatsApp Booking Confirmation Sent!");
+        } else if (res.deepLink) {
+          toast.info("Open WhatsApp to send confirmation", {
+            action: {
+              label: "Open WhatsApp",
+              onClick: () => window.open(res.deepLink, "_blank"),
+            },
+          });
+        }
+      } catch (err) {
+        console.error("WhatsApp dispatch error:", err);
+      }
+
       toast.success(
         existingPurchaser ? "Purchaser info updated!" : "Purchaser details recorded successfully!"
       );
@@ -243,15 +283,13 @@ export function RecordPurchaserDialog({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs font-medium">Phone Number *</Label>
-                <div className="relative mt-1">
-                  <Input
-                    required
-                    placeholder="+91 98765 43210"
+                <div className="mt-1">
+                  <PhoneInput
                     value={form.customer_phone}
-                    onChange={(e) => set("customer_phone", e.target.value)}
-                    className="pl-8 text-xs"
+                    onChange={(val) => set("customer_phone", val)}
+                    placeholder="98765 43210"
+                    required
                   />
-                  <Phone className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 </div>
               </div>
 
@@ -286,29 +324,23 @@ export function RecordPurchaserDialog({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs font-medium">Total Purchase Price (₹)</Label>
-                <div className="relative mt-1">
-                  <Input
-                    type="number"
-                    placeholder="4500000"
+                <div className="mt-1">
+                  <CurrencyInput
+                    placeholder="45,00,000"
                     value={form.total_price}
-                    onChange={(e) => set("total_price", e.target.value)}
-                    className="pl-8 text-xs"
+                    onChange={(val) => set("total_price", val)}
                   />
-                  <IndianRupee className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 </div>
               </div>
 
               <div>
                 <Label className="text-xs font-medium">Advance Paid (₹)</Label>
-                <div className="relative mt-1">
-                  <Input
-                    type="number"
-                    placeholder="500000"
+                <div className="mt-1">
+                  <CurrencyInput
+                    placeholder="5,00,000"
                     value={form.advance_paid}
-                    onChange={(e) => set("advance_paid", e.target.value)}
-                    className="pl-8 text-xs"
+                    onChange={(val) => set("advance_paid", val)}
                   />
-                  <IndianRupee className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 </div>
               </div>
             </div>

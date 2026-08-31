@@ -1,197 +1,236 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldCheck, Sparkles, Lock, Mail } from "lucide-react";
+import { LiquidEffectAnimation } from "@/components/ui/liquid-effect-animation";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
-
-const ASSET = "https://storage.googleapis.com/webild/default/templates/marbella";
 
 function AuthPage() {
   const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        nav({ to: "/dashboard", replace: true });
+      }
+    });
+  }, [nav]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      toast.success("Welcome back to Terra.");
-      nav({ to: "/dashboard" });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Authentication failed");
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { full_name: email.split("@")[0] },
+          },
+        });
+        if (error) throw error;
+        if (data.user) {
+          toast.success("Account created successfully!");
+          nav({ to: "/dashboard" });
+        } else {
+          toast.info("Check your email for confirmation link.");
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          // If credentials fail, attempt automatic signup for first-time user setup
+          if (
+            error.message?.toLowerCase().includes("invalid login credentials") ||
+            error.message?.toLowerCase().includes("user not found")
+          ) {
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                data: { full_name: email.split("@")[0] },
+              },
+            });
+            if (!signUpError && signUpData.user) {
+              toast.success("Account created and logged in!");
+              nav({ to: "/dashboard" });
+              return;
+            }
+          }
+          throw error;
+        }
+        toast.success("Welcome back to Terra 2.0.");
+        nav({ to: "/dashboard" });
+      }
+    } catch (err: any) {
+      console.error("Auth submit error:", err);
+      const msg =
+        err?.message ||
+        err?.error_description ||
+        (err instanceof Error ? err.toString() : typeof err === "string" ? err : String(err) || "Authentication failed");
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-12 bg-background text-foreground overflow-hidden selection:bg-terracotta selection:text-white">
-      {/* LEFT ARCHITECTURAL FILM PANEL */}
-      <div className="hidden lg:flex lg:col-span-7 relative overflow-hidden bg-black">
-        <img
-          src={`${ASSET}/contact/cta-bg.webp`}
-          alt="Terra Architectural Estate"
-          className="absolute inset-0 w-full h-full object-cover scale-105 filter brightness-90 contrast-105 animate-[pulse_10s_infinite_ease-in-out]"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/30" />
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+    <div className="relative min-h-screen w-full flex items-center justify-center p-4 sm:p-6 lg:p-10 overflow-hidden text-stone-900 selection:bg-terracotta selection:text-white">
+      {/* 3D Liquid Background Canvas displaying TERRA 2.0 image */}
+      <LiquidEffectAnimation imageSrc="/terra-bg.png" />
 
-        {/* Ambient Z-Axis Parallax Watermark */}
-        <div className="absolute inset-x-0 bottom-12 flex justify-center pointer-events-none select-none z-0">
-          <span className="text-[10vw] font-black text-white/[0.04] uppercase tracking-tighter whitespace-nowrap">
-            TERRA ESTATES
-          </span>
-        </div>
+      {/* Top Header Navigation */}
+      <header className="absolute top-0 inset-x-0 z-30 flex items-center justify-between p-6 sm:px-12 pointer-events-auto">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-3 text-2xl font-bold tracking-tight text-stone-900 hover:text-terracotta transition-colors group"
+        >
+          <img
+            src="/logo.png"
+            alt="Terra Logo"
+            className="size-9 rounded-xl object-cover border border-stone-300 shadow-md group-hover:scale-105 transition-transform"
+          />
+          <span className="font-display">Terra 2.0</span>
+        </Link>
 
-        <div className="relative z-10 flex flex-col justify-between w-full p-12 text-white">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="inline-flex items-center gap-3 text-2xl font-bold tracking-tight text-white hover:text-terracotta transition-colors group">
-              <img src="/logo.png" alt="Terra Logo" className="size-9 rounded-xl object-cover border border-white/20 shadow-lg group-hover:scale-105 transition-transform" />
-              <span>Terra</span>
-            </Link>
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-mono tracking-widest text-white/90">
-              <Sparkles className="size-3.5 text-terracotta" />
-              PORTAL ACCESS
-            </div>
-          </div>
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-stone-700 hover:text-stone-900 transition-all rounded-full bg-white/80 backdrop-blur-md border border-white/90 hover:border-terracotta/40 hover:bg-white/95 group shadow-sm"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform text-terracotta" />
+          Landing Page
+        </Link>
+      </header>
 
-          <div className="flex flex-col gap-6 max-w-xl">
-            <div className="w-fit px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-terracotta bg-terracotta/10 border border-terracotta/20 rounded-full">
-              01 — Estate Management
-            </div>
-            <h2 className="text-4xl xl:text-5xl font-semibold leading-[1.15] text-balance">
-              Manage luxury plotted parcels with seamless precision.
-            </h2>
-            <p className="text-base text-white/70 leading-relaxed text-balance">
-              Welcome to the central developer console for Terra. Access interactive masterplans, client inquiries, layout approvals, and live land reservations.
-            </p>
+      {/* Glassmorphic Login Card */}
+      <main className="relative z-20 w-full max-w-md my-auto pt-16 pb-6">
+        <div className="relative group">
+          {/* Outer Glow Accent */}
+          <div className="absolute -inset-1.5 rounded-[2.5rem] bg-gradient-to-r from-terracotta/30 via-amber-400/25 to-terracotta/30 blur-2xl opacity-60 group-hover:opacity-100 transition duration-700" />
 
-            {/* Quote Pill */}
-            <div className="mt-4 flex items-center gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15">
-              <div className="flex items-center justify-center size-10 rounded-full bg-terracotta/20 text-terracotta border border-terracotta/30 shrink-0">
-                <ShieldCheck className="size-5" />
+          {/* Light Glassmorphic Container */}
+          <div className="relative rounded-[2rem] bg-white/70 backdrop-blur-3xl border border-white/90 p-8 sm:p-10 shadow-[0_30px_90px_-20px_rgba(200,90,50,0.2)] text-stone-900">
+            
+            {/* Header Badge */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-terracotta/10 border border-terracotta/20 text-[11px] font-bold tracking-widest uppercase text-terracotta shadow-xs">
+                <Sparkles className="size-3.5 text-terracotta animate-pulse" />
+                <span>TERRA 2.0 PORTAL</span>
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-white">End-to-End Land Operations</span>
-                <span className="text-xs text-white/60">Encrypted institutional developer session</span>
+
+              <div className="flex items-center gap-1.5 text-xs text-stone-500 font-mono font-medium">
+                <ShieldCheck className="size-4 text-emerald-600" />
+                <span>Secure Access</span>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between text-xs text-white/50 border-t border-white/10 pt-6">
-            <span>© Terra Land Studio</span>
-            <span>Powered by HAEGL</span>
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT AUTH FORM PANEL */}
-      <div className="lg:col-span-5 flex flex-col justify-between p-6 sm:p-12 xl:p-16 relative bg-background">
-        <div className="flex items-center justify-between w-full">
-          <Link to="/" className="lg:hidden inline-flex items-center gap-2 text-2xl font-semibold text-foreground">
-            <img src="/logo.png" alt="Terra Logo" className="size-7 rounded-lg object-cover border border-border/50" />
-            <span>Terra</span>
-          </Link>
-          <Link 
-            to="/" 
-            className="ml-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-medium uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all rounded-full border border-border/50 hover:border-border hover:bg-accent/50 group"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-            Landing Page
-          </Link>
-        </div>
-
-        <div className="w-full max-w-md mx-auto my-auto py-12">
-          {/* Logo Badge & Header */}
-          <div className="flex flex-col gap-4 mb-2">
-            <div className="flex items-center gap-3.5">
-              <div className="relative group">
-                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-terracotta to-amber-500 blur-md opacity-30 group-hover:opacity-60 transition duration-500" />
-                <img
-                  src="/logo.png"
-                  alt="Terra Logo"
-                  className="relative size-14 rounded-2xl object-cover border-2 border-border/80 shadow-md group-hover:scale-105 transition-transform"
-                />
-              </div>
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-[0.25em] text-terracotta block">
-                  Portal Authentication
-                </span>
-                <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
-                  Welcome Back
-                </h1>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Sign in to manage your land developments and client inquiries.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                Developer Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="name@domain.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="h-12 rounded-xl bg-card border-border/80 px-4 text-sm focus:border-terracotta focus:ring-1 focus:ring-terracotta transition-all"
-              />
+            {/* Title & Subtitle */}
+            <div className="space-y-2 mb-8">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-stone-900 font-display">
+                {isSignUp ? "Create Account" : "Welcome Back"}
+              </h1>
+              <p className="text-sm text-stone-600 leading-relaxed font-medium">
+                {isSignUp
+                  ? "Initialize your Terra 2.0 developer session to manage land parcels."
+                  : "Sign in to access interactive layout masterplans and leads."}
+              </p>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label
+                  htmlFor="email"
+                  className="text-xs uppercase tracking-wider text-stone-700 font-bold flex items-center gap-1.5"
+                >
+                  <Mail className="size-3.5 text-terracotta" />
+                  Developer Email
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="developer@domain.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="h-12 rounded-xl bg-white/85 border-stone-200/90 px-4 text-sm text-stone-900 placeholder:text-stone-400 focus:border-terracotta focus:ring-2 focus:ring-terracotta/20 transition-all shadow-xs font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label
+                  htmlFor="password"
+                  className="text-xs uppercase tracking-wider text-stone-700 font-bold flex items-center gap-1.5"
+                >
+                  <Lock className="size-3.5 text-terracotta" />
                   Password
                 </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className="h-12 rounded-xl bg-white/85 border-stone-200/90 px-4 text-sm text-stone-900 placeholder:text-stone-400 focus:border-terracotta focus:ring-2 focus:ring-terracotta/20 transition-all shadow-xs font-medium"
+                  />
+                </div>
               </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="h-12 rounded-xl bg-card border-border/80 px-4 text-sm focus:border-terracotta focus:ring-1 focus:ring-terracotta transition-all"
-              />
-            </div>
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="mt-2 h-12 w-full rounded-xl bg-terracotta text-white font-medium hover:bg-terracotta/90 transition-all duration-300 shadow-md group cursor-pointer flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                "Authenticating..."
-              ) : (
-                <>
-                  Sign In to Dashboard
-                  <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </Button>
-          </form>
-        </div>
+              <Button
+                type="submit"
+                disabled={loading}
+                className="mt-4 h-12 w-full rounded-xl bg-terracotta text-white font-semibold hover:bg-terracotta/90 transition-all duration-300 shadow-md shadow-terracotta/25 group cursor-pointer flex items-center justify-center gap-2 text-sm"
+              >
+                {loading ? (
+                  "Authenticating..."
+                ) : isSignUp ? (
+                  <>
+                    Create Super Admin Account
+                    <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                ) : (
+                  <>
+                    Sign In to Dashboard
+                    <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </Button>
 
-        <div className="text-center text-xs text-muted-foreground">
-          Protected by Terra Security. Need access? Contact developer administration.
+              <div className="text-center pt-3 border-t border-stone-200/60 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  className="text-xs text-stone-600 hover:text-terracotta transition-colors font-semibold underline cursor-pointer"
+                >
+                  {isSignUp
+                    ? "Already registered? Sign In to Dashboard"
+                    : "First time setup? Create New Account / Sign Up"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      </main>
+
+      {/* Footer Branding */}
+      <footer className="absolute bottom-4 inset-x-0 z-30 text-center text-xs text-stone-500 font-medium pointer-events-none select-none">
+        © Terra 2.0 Land Studio · Powered by HAEGL
+      </footer>
     </div>
   );
 }

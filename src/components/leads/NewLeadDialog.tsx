@@ -13,6 +13,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import {
+  sanitizePhoneInput,
+  getPhoneValidationError,
+  isValidEmail,
+  sanitizePositiveNumber,
+} from "@/lib/formValidation";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import {
   Select,
   SelectContent,
@@ -121,15 +130,23 @@ export function NewLeadDialog({
   const selectedProject = (projects ?? []).find((p) => p.id === projectId);
   const layoutPath = selectedProject?.layout_image_url ?? null;
 
-  // 2. Fetch layout image signed URL
+  // 2. Fetch layout image signed URL (with fallback for old cloned project paths)
   const { data: layoutUrl, isLoading: layoutUrlLoading } = useQuery({
     queryKey: ["leads-layout-url", layoutPath],
     enabled: !!layoutPath,
     queryFn: async () => {
+      if (!layoutPath) return null;
+      if (layoutPath.startsWith("http://") || layoutPath.startsWith("https://")) {
+        return layoutPath;
+      }
       const { data } = await supabase.storage
         .from("project-layouts")
-        .createSignedUrl(layoutPath!, 3600);
-      return data?.signedUrl ?? null;
+        .createSignedUrl(layoutPath, 3600);
+
+      if (data?.signedUrl) return data.signedUrl;
+
+      // Fallback for old cloned project storage bucket
+      return `https://zolbuckwnjsxfgqqkcjj.supabase.co/storage/v1/object/public/project-layouts/${layoutPath}`;
     },
   });
 
@@ -164,16 +181,29 @@ export function NewLeadDialog({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) return;
+
+    const cleanPhone = sanitizePhoneInput(phone);
+    const phoneErr = getPhoneValidationError(cleanPhone);
+    if (phoneErr) {
+      toast.error(`Invalid Phone: ${phoneErr}`);
+      return;
+    }
+
+    if (email.trim() && !isValidEmail(email)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
     if (leadMode === "plot" && (!projectId || !plotId)) return;
 
     onSubmit({
       plot_id: leadMode === "plot" ? plotId : null,
       project_id: leadMode === "plot" ? projectId : null,
       name: name.trim(),
-      phone: phone.trim(),
+      phone: cleanPhone,
       email: email.trim() || null,
       source: source || null,
-      budget: budget ? Number(budget) : null,
+      budget: budget ? sanitizePositiveNumber(budget) : null,
       notes: notes.trim() || null,
     });
   }
@@ -489,14 +519,15 @@ export function NewLeadDialog({
 
                 <div>
                   <Label htmlFor="phone" className="text-xs font-medium">Phone Number <span className="text-terracotta">*</span></Label>
-                  <Input
-                    id="phone"
-                    className="mt-1"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="10-digit mobile number"
-                    required
-                  />
+                  <div className="mt-1">
+                    <PhoneInput
+                      id="phone"
+                      value={phone}
+                      onChange={setPhone}
+                      placeholder="98765 43210"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -529,14 +560,14 @@ export function NewLeadDialog({
 
                 <div>
                   <Label htmlFor="budget" className="text-xs font-medium">Estimated Budget (₹)</Label>
-                  <Input
-                    id="budget"
-                    type="number"
-                    className="mt-1"
-                    value={budget}
-                    onChange={(e) => setBudget(e.target.value)}
-                    placeholder="e.g. 5000000"
-                  />
+                  <div className="mt-1">
+                    <CurrencyInput
+                      id="budget"
+                      value={budget}
+                      onChange={setBudget}
+                      placeholder="e.g. 50,00,000"
+                    />
+                  </div>
                 </div>
               </div>
 

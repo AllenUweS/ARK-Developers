@@ -102,7 +102,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <head><HeadContent /></head>
+      <head>
+        <script
+          type="importmap"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              imports: {
+                three: "https://unpkg.com/three@0.160.0/build/three.module.js",
+              },
+            }),
+          }}
+        />
+        <HeadContent />
+      </head>
       <body>
         {children}
         <Scripts />

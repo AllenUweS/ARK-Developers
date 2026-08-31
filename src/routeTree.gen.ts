@@ -16,6 +16,7 @@ import { Route as AuthenticatedVisitProofsRouteImport } from './routes/_authenti
 import { Route as AuthenticatedTreasuryRouteImport } from './routes/_authenticated/treasury'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
+import { Route as AuthenticatedProjectStatsRouteImport } from './routes/_authenticated/project-stats'
 import { Route as AuthenticatedMyIncentivesRouteImport } from './routes/_authenticated/my-incentives'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
@@ -23,7 +24,9 @@ import { Route as AuthenticatedInstallmentsRouteImport } from './routes/_authent
 import { Route as AuthenticatedIncentivesRouteImport } from './routes/_authenticated/incentives'
 import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedCancellationsRouteImport } from './routes/_authenticated/cancellations'
 import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticated/bookings'
+import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authenticated/approvals'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedTreasuryTransferIdRouteImport } from './routes/_authenticated/treasury_.$transferId'
 import { Route as AuthenticatedProjectsIdRouteImport } from './routes/_authenticated/projects_.$id'
@@ -65,6 +68,12 @@ const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProjectStatsRoute =
+  AuthenticatedProjectStatsRouteImport.update({
+    id: '/project-stats',
+    path: '/project-stats',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMyIncentivesRoute =
   AuthenticatedMyIncentivesRouteImport.update({
     id: '/my-incentives',
@@ -102,9 +111,20 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCancellationsRoute =
+  AuthenticatedCancellationsRouteImport.update({
+    id: '/cancellations',
+    path: '/cancellations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedBookingsRoute = AuthenticatedBookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedApprovalsRoute = AuthenticatedApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
@@ -140,7 +160,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/approvals': typeof AuthenticatedApprovalsRoute
   '/bookings': typeof AuthenticatedBookingsRoute
+  '/cancellations': typeof AuthenticatedCancellationsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRoute
   '/incentives': typeof AuthenticatedIncentivesRoute
@@ -148,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/leads': typeof AuthenticatedLeadsRoute
   '/messages': typeof AuthenticatedMessagesRoute
   '/my-incentives': typeof AuthenticatedMyIncentivesRoute
+  '/project-stats': typeof AuthenticatedProjectStatsRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/treasury': typeof AuthenticatedTreasuryRoute
@@ -161,7 +184,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
+  '/approvals': typeof AuthenticatedApprovalsRoute
   '/bookings': typeof AuthenticatedBookingsRoute
+  '/cancellations': typeof AuthenticatedCancellationsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRoute
   '/incentives': typeof AuthenticatedIncentivesRoute
@@ -169,6 +194,7 @@ export interface FileRoutesByTo {
   '/leads': typeof AuthenticatedLeadsRoute
   '/messages': typeof AuthenticatedMessagesRoute
   '/my-incentives': typeof AuthenticatedMyIncentivesRoute
+  '/project-stats': typeof AuthenticatedProjectStatsRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/treasury': typeof AuthenticatedTreasuryRoute
@@ -184,7 +210,9 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
+  '/_authenticated/approvals': typeof AuthenticatedApprovalsRoute
   '/_authenticated/bookings': typeof AuthenticatedBookingsRoute
+  '/_authenticated/cancellations': typeof AuthenticatedCancellationsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documents': typeof AuthenticatedDocumentsRoute
   '/_authenticated/incentives': typeof AuthenticatedIncentivesRoute
@@ -192,6 +220,7 @@ export interface FileRoutesById {
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/messages': typeof AuthenticatedMessagesRoute
   '/_authenticated/my-incentives': typeof AuthenticatedMyIncentivesRoute
+  '/_authenticated/project-stats': typeof AuthenticatedProjectStatsRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/treasury': typeof AuthenticatedTreasuryRoute
@@ -207,7 +236,9 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/analytics'
+    | '/approvals'
     | '/bookings'
+    | '/cancellations'
     | '/dashboard'
     | '/documents'
     | '/incentives'
@@ -215,6 +246,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/messages'
     | '/my-incentives'
+    | '/project-stats'
     | '/projects'
     | '/team'
     | '/treasury'
@@ -228,7 +260,9 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/analytics'
+    | '/approvals'
     | '/bookings'
+    | '/cancellations'
     | '/dashboard'
     | '/documents'
     | '/incentives'
@@ -236,6 +270,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/messages'
     | '/my-incentives'
+    | '/project-stats'
     | '/projects'
     | '/team'
     | '/treasury'
@@ -250,7 +285,9 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/analytics'
+    | '/_authenticated/approvals'
     | '/_authenticated/bookings'
+    | '/_authenticated/cancellations'
     | '/_authenticated/dashboard'
     | '/_authenticated/documents'
     | '/_authenticated/incentives'
@@ -258,6 +295,7 @@ export interface FileRouteTypes {
     | '/_authenticated/leads'
     | '/_authenticated/messages'
     | '/_authenticated/my-incentives'
+    | '/_authenticated/project-stats'
     | '/_authenticated/projects'
     | '/_authenticated/team'
     | '/_authenticated/treasury'
@@ -325,6 +363,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/project-stats': {
+      id: '/_authenticated/project-stats'
+      path: '/project-stats'
+      fullPath: '/project-stats'
+      preLoaderRoute: typeof AuthenticatedProjectStatsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/my-incentives': {
       id: '/_authenticated/my-incentives'
       path: '/my-incentives'
@@ -374,11 +419,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/cancellations': {
+      id: '/_authenticated/cancellations'
+      path: '/cancellations'
+      fullPath: '/cancellations'
+      preLoaderRoute: typeof AuthenticatedCancellationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/bookings': {
       id: '/_authenticated/bookings'
       path: '/bookings'
       fullPath: '/bookings'
       preLoaderRoute: typeof AuthenticatedBookingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/approvals': {
+      id: '/_authenticated/approvals'
+      path: '/approvals'
+      fullPath: '/approvals'
+      preLoaderRoute: typeof AuthenticatedApprovalsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/analytics': {
@@ -436,7 +495,9 @@ const AuthenticatedPlotsPlotIdBookRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
+  AuthenticatedApprovalsRoute: typeof AuthenticatedApprovalsRoute
   AuthenticatedBookingsRoute: typeof AuthenticatedBookingsRoute
+  AuthenticatedCancellationsRoute: typeof AuthenticatedCancellationsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRoute
   AuthenticatedIncentivesRoute: typeof AuthenticatedIncentivesRoute
@@ -444,6 +505,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRoute
   AuthenticatedMyIncentivesRoute: typeof AuthenticatedMyIncentivesRoute
+  AuthenticatedProjectStatsRoute: typeof AuthenticatedProjectStatsRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedTreasuryRoute: typeof AuthenticatedTreasuryRoute
@@ -455,7 +517,9 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
+  AuthenticatedApprovalsRoute: AuthenticatedApprovalsRoute,
   AuthenticatedBookingsRoute: AuthenticatedBookingsRoute,
+  AuthenticatedCancellationsRoute: AuthenticatedCancellationsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRoute,
   AuthenticatedIncentivesRoute: AuthenticatedIncentivesRoute,
@@ -463,6 +527,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedMessagesRoute: AuthenticatedMessagesRoute,
   AuthenticatedMyIncentivesRoute: AuthenticatedMyIncentivesRoute,
+  AuthenticatedProjectStatsRoute: AuthenticatedProjectStatsRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedTreasuryRoute: AuthenticatedTreasuryRoute,
