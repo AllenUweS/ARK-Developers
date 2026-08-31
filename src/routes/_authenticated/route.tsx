@@ -156,24 +156,6 @@ function AuthedLayout() {
     );
   }
 
-  if (!user) {
-    return null;
-  }
-
-  const nav = [
-    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/approvals", label: "Approvals", icon: FileCheck },
-    { to: "/project-stats", label: "Project Stats", icon: PieChart },
-    { to: "/projects", label: "Projects", icon: FolderKanban },
-    { to: "/bookings", label: "Bookings", icon: ClipboardList },
-    { to: "/installments", label: "Installments", icon: WalletCards },
-    { to: "/cancellations", label: "Cancellations", icon: AlertTriangle },
-    { to: "/leads", label: "Leads", icon: Contact2 },
-    { to: "/documents", label: "Documents", icon: FolderOpen },
-    { to: "/team", label: "Team", icon: Users },
-    { to: "/analytics", label: "Analytics", icon: BarChart3 },
-  ] as const;
-
   const { data: pendingApprovalCount = 0 } = useQuery({
     queryKey: ["pending_approval_count", role],
     enabled: !!role,
@@ -190,101 +172,170 @@ function AuthedLayout() {
     },
   });
 
-  const visibleNav = [
-    ...nav,
-    ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts"
-      ? [{ to: "/treasury" as const, label: "Treasury", icon: Landmark }]
-      : []),
-    ...(role === "admin" || role === "super_admin" || role === "manager" || role === "management" || role === "accounts" || role === "crm"
-      ? [
-          { to: "/incentives" as const, label: "Incentives", icon: Sparkles },
-          { to: "/messages" as const, label: "Messages", icon: MessageSquare },
-        ]
-      : role === "employee"
-        ? [{ to: "/my-incentives" as const, label: "Incentives", icon: Sparkles }]
-        : []),
-    ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts"
-      ? [{ to: "/visit-proofs" as const, label: "Visit Proofs", icon: MapPinned }]
-      : []),
-  ];
+  if (!user) {
+    return null;
+  }
+
+  const navSections = [
+    {
+      title: "Overview",
+      items: [
+        { to: "/dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
+        { to: "/approvals" as const, label: "Approvals", icon: FileCheck, badge: pendingApprovalCount },
+        { to: "/project-stats" as const, label: "Project Stats", icon: PieChart },
+      ],
+    },
+    {
+      title: "Sales & Pipeline",
+      items: [
+        { to: "/projects" as const, label: "Projects", icon: FolderKanban },
+        { to: "/bookings" as const, label: "Bookings", icon: ClipboardList },
+        { to: "/installments" as const, label: "Installments", icon: WalletCards },
+        { to: "/cancellations" as const, label: "Cancellations", icon: AlertTriangle },
+        { to: "/leads" as const, label: "Leads CRM", icon: Contact2 },
+      ],
+    },
+    {
+      title: "Finance & Treasury",
+      items: [
+        ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts"
+          ? [{ to: "/treasury" as const, label: "Treasury Vaults", icon: Landmark }]
+          : []),
+        ...(role === "admin" || role === "super_admin" || role === "manager" || role === "management" || role === "accounts" || role === "crm"
+          ? [{ to: "/incentives" as const, label: "Incentives", icon: Sparkles }]
+          : role === "employee"
+            ? [{ to: "/my-incentives" as const, label: "My Incentives", icon: Sparkles }]
+            : []),
+        { to: "/analytics" as const, label: "Financial Analytics", icon: BarChart3 },
+      ],
+    },
+    {
+      title: "Operations & Admin",
+      items: [
+        { to: "/documents" as const, label: "Document Vault", icon: FolderOpen },
+        { to: "/team" as const, label: "Team & BDOs", icon: Users },
+        ...(role === "admin" || role === "super_admin" || role === "manager" || role === "management" || role === "accounts" || role === "crm"
+          ? [{ to: "/messages" as const, label: "Messages", icon: MessageSquare }]
+          : []),
+        ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts"
+          ? [{ to: "/visit-proofs" as const, label: "Site Visit Proofs", icon: MapPinned }]
+          : []),
+      ],
+    },
+  ].filter((section) => section.items.length > 0);
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col border-r border-border/60 bg-card/85 backdrop-blur-xl relative overflow-hidden shadow-xs">
-        {/* Subtle Ambient Glow */}
-        <div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-terracotta/5 blur-3xl" />
+      {/* Modern Desktop Sidebar — Fixed, Pinned, Aesthetic */}
+      <aside className="hidden md:flex w-68 flex-col border-r border-border/50 bg-card/90 backdrop-blur-2xl h-screen sticky top-0 shrink-0 shadow-sm z-30 select-none">
+        {/* Ambient Warm Gradient Accents */}
+        <div className="pointer-events-none absolute -left-20 -top-20 h-52 w-52 rounded-full bg-terracotta/[0.07] blur-3xl" />
+        <div className="pointer-events-none absolute -right-20 bottom-32 h-44 w-44 rounded-full bg-amber-500/[0.05] blur-3xl" />
 
-        <div className="p-6 border-b border-border/50 flex items-center justify-between">
-          <div>
-            <Link to="/dashboard" className="inline-flex items-center gap-2.5 text-display text-2xl font-bold text-ink dark:text-foreground group">
-              <img src="/ark-logo.png" alt="Ark Logo" className="h-8 w-auto object-contain shadow-2xs group-hover:scale-105 transition-transform" />
-              <div className="flex flex-col">
-                <span className="font-extrabold text-base tracking-tight leading-none text-foreground">ARK</span>
-                <span className="text-[8.5px] text-muted-foreground tracking-wider uppercase font-bold mt-0.5">Builders & Developers</span>
-              </div>
-            </Link>
-            <p className="text-[9px] text-muted-foreground mt-1 uppercase tracking-[0.2em] font-semibold text-terracotta">
-              Site & Financial Platform
-            </p>
-          </div>
+        {/* Brand Header */}
+        <div className="p-4.5 border-b border-border/40 bg-card/60 flex items-center justify-between shrink-0 relative z-10">
+          <Link to="/dashboard" className="flex items-center gap-3 group">
+            <div className="size-10 rounded-xl bg-white border border-slate-200/90 p-1 flex items-center justify-center shadow-xs group-hover:scale-105 group-hover:shadow-md transition-all duration-300">
+              <img src="/ark-logo.png" alt="Ark Logo" className="h-7 w-auto object-contain" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-serif font-black text-[15px] text-slate-900 dark:text-white leading-none tracking-tight">
+                ARK BUILDERS
+              </span>
+              <span className="text-[8.5px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mt-1 flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Financial Platform
+              </span>
+            </div>
+          </Link>
           <NotificationBell userId={user.id} />
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
-          {visibleNav.map((item) => {
-            const active =
-              location.pathname === item.to ||
-              ((item.to as string) !== "/" && location.pathname.startsWith(item.to));
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`flex items-center gap-3 py-2.5 rounded-lg text-sm border-l-2 transition-all duration-200 ${
-                  active
-                    ? "bg-terracotta/[0.08] text-terracotta font-semibold border-terracotta shadow-xs backdrop-blur-xs pl-3.5 pr-3"
-                    : "text-foreground/75 hover:bg-muted/70 hover:text-foreground border-transparent pl-4 pr-3"
-                }`}
-              >
-                <Icon className={`h-4 w-4 ${active ? "text-terracotta" : "text-muted-foreground"}`} />
-                <span className="flex-1 truncate">{item.label}</span>
-                {item.to === "/approvals" && pendingApprovalCount > 0 && (
-                  <span className="h-5 px-1.5 min-w-[20px] rounded-full bg-terracotta text-white text-[10px] font-bold flex items-center justify-center shadow-xs shrink-0">
-                    {pendingApprovalCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="p-3 border-t border-border/50 bg-muted/20">
-          <div className="px-3 py-2 flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-terracotta to-amber-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {(profile?.full_name ?? user.email ?? "T").slice(0, 1).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold truncate text-foreground">{profile?.full_name ?? user.email}</div>
-              <div className="text-[10px] text-muted-foreground capitalize font-medium">
-                {role?.replace("_", " ")}
+        {/* Modern Grouped Navigation (Scrollable with clean hidden scrollbar) */}
+        <nav className="flex-1 p-3.5 space-y-5 overflow-y-auto min-h-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden relative z-10">
+          {navSections.map((section) => (
+            <div key={section.title} className="space-y-1">
+              <div className="px-3 pb-1 text-[9.5px] font-extrabold uppercase tracking-[0.18em] text-muted-foreground/70">
+                {section.title}
+              </div>
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const active =
+                    location.pathname === item.to ||
+                    ((item.to as string) !== "/" && location.pathname.startsWith(item.to));
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className={`group relative flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                        active
+                          ? "bg-gradient-to-r from-terracotta/15 via-terracotta/10 to-amber-500/5 text-terracotta font-bold shadow-xs border border-terracotta/25"
+                          : "text-foreground/75 hover:bg-muted/70 hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      {/* Active Indicator Bar */}
+                      {active && (
+                        <span className="absolute left-1 h-4 w-1 rounded-full bg-terracotta shadow-[0_0_8px_rgba(224,90,56,0.8)]" />
+                      )}
+                      <div
+                        className={`size-7 rounded-lg flex items-center justify-center transition-all ${
+                          active
+                            ? "bg-terracotta/15 text-terracotta shadow-2xs"
+                            : "bg-muted/40 text-muted-foreground group-hover:text-foreground group-hover:bg-muted/80"
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <span className="flex-1 truncate">{item.label}</span>
+                      {"badge" in item && item.badge && item.badge > 0 ? (
+                        <span className="h-4.5 min-w-[18px] px-1.5 rounded-full bg-gradient-to-r from-terracotta to-amber-600 text-white text-[9.5px] font-black flex items-center justify-center shadow-xs">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
+          ))}
+        </nav>
+
+        {/* Pinned Executive Identity Card & Fast Logout */}
+        <div className="p-3.5 border-t border-border/40 bg-gradient-to-t from-muted/50 to-muted/20 shrink-0 relative z-10">
+          <div className="p-2.5 rounded-2xl bg-card/95 border border-border/70 shadow-xs flex items-center justify-between gap-2.5 backdrop-blur-md">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative">
+                <div className="size-8.5 rounded-xl bg-gradient-to-br from-terracotta via-amber-600 to-amber-700 flex items-center justify-center text-white text-xs font-black shadow-xs ring-2 ring-background">
+                  {(profile?.full_name ?? user.email ?? "A").slice(0, 1).toUpperCase()}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-500 border-2 border-card shadow-xs" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold truncate text-foreground leading-tight">
+                  {profile?.full_name ?? user.email?.split("@")[0]}
+                </div>
+                <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[8.5px] font-extrabold uppercase tracking-wider bg-terracotta/10 text-terracotta border border-terracotta/20">
+                  {role?.replace("_", " ")}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-xl shrink-0 transition-colors"
+              onClick={signOut}
+              title="Sign Out"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3 text-destructive hover:bg-destructive/10 hover:text-destructive text-xs font-medium cursor-pointer rounded-lg"
-            onClick={signOut}
-          >
-            <LogOut className="h-4 w-4" />
-            Sign Out
-          </Button>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-        {/* Mobile Header */}
+        {/* Mobile Header (Only visible on phones/small screens) */}
         <header className="md:hidden border-b border-border/50 bg-card p-4 flex items-center justify-between sticky top-0 z-30 shadow-xs">
           <Link to="/dashboard" className="flex items-center gap-2 text-base font-extrabold text-ink dark:text-foreground">
             <img src="/ark-logo.png" alt="Ark Logo" className="h-6 w-auto object-contain" />
@@ -292,6 +343,15 @@ function AuthedLayout() {
           </Link>
           <div className="flex items-center gap-2">
             <NotificationBell userId={user.id} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-destructive hover:bg-destructive/10 cursor-pointer rounded-lg"
+              onClick={signOut}
+              title="Sign Out"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </header>
 

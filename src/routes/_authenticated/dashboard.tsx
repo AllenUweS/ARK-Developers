@@ -201,7 +201,7 @@ function Dashboard() {
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-terracotta/30 bg-terracotta/10 px-2.5 py-0.5 text-[11px] font-semibold text-terracotta">
                 <Sparkles className="h-3 w-3 text-terracotta animate-pulse" />
-                TERRA STUDIO
+                ARK DEVELOPERS
               </span>
               <span className="text-xs text-muted-foreground font-medium">
                 {format(new Date(), "EEEE, MMMM d, yyyy")}
