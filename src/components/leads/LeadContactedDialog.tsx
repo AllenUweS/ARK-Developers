@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import {
   Select,
   SelectContent,
@@ -174,13 +175,11 @@ export function LeadContactedDialog({
               <Label htmlFor="budget" className="text-xs font-medium flex items-center gap-1">
                 <IndianRupee className="h-3 w-3 text-muted-foreground" /> Customer Budget
               </Label>
-              <Input
+              <CurrencyInput
                 id="budget"
-                type="number"
-                placeholder="e.g. 5000000"
                 value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                className="h-9 text-xs"
+                onChange={setBudget}
+                placeholder="e.g. 50,00,000"
               />
             </div>
 

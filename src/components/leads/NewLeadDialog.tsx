@@ -35,6 +35,7 @@ import {
   STATUS_PALETTE,
   pointsAttr,
   polygonCentroid,
+  resolveProjectLayoutUrl,
   type PlotRow,
   type PlotStatus,
   type Point,
@@ -64,6 +65,9 @@ function useImageAspect(url: string | null | undefined) {
     const img = new Image();
     img.onload = () => {
       if (!cancelled) setAspect(img.naturalWidth / img.naturalHeight);
+    };
+    img.onerror = () => {
+      if (!cancelled) setAspect(16 / 9);
     };
     img.src = url;
     return () => {
@@ -134,20 +138,7 @@ export function NewLeadDialog({
   const { data: layoutUrl, isLoading: layoutUrlLoading } = useQuery({
     queryKey: ["leads-layout-url", layoutPath],
     enabled: !!layoutPath,
-    queryFn: async () => {
-      if (!layoutPath) return null;
-      if (layoutPath.startsWith("http://") || layoutPath.startsWith("https://")) {
-        return layoutPath;
-      }
-      const { data } = await supabase.storage
-        .from("project-layouts")
-        .createSignedUrl(layoutPath, 3600);
-
-      if (data?.signedUrl) return data.signedUrl;
-
-      // Fallback for old cloned project storage bucket
-      return `https://zolbuckwnjsxfgqqkcjj.supabase.co/storage/v1/object/public/project-layouts/${layoutPath}`;
-    },
+    queryFn: () => resolveProjectLayoutUrl(layoutPath),
   });
 
   // 3. Fetch plots for selected project
@@ -372,7 +363,7 @@ export function NewLeadDialog({
                         </defs>
 
                         {/* Background Layout Image */}
-                        <image href={layoutUrl} x={0} y={0} width={100} height={100} preserveAspectRatio="none" />
+                        <image href={layoutUrl} xlinkHref={layoutUrl} x={0} y={0} width={100} height={100} preserveAspectRatio="none" />
 
                         {/* Interactive Plot Polygons */}
                         {mappedPlots.map((p) => {

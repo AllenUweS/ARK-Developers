@@ -24,6 +24,7 @@ import {
   FACING_LABEL,
   pointsAttr,
   polygonCentroid,
+  resolveProjectLayoutUrl,
   type PlotRow,
   type PlotStatus,
   type Point,
@@ -42,6 +43,9 @@ function useImageAspect(url: string | null | undefined) {
     const img = new Image();
     img.onload = () => {
       if (!cancelled) setAspect(img.naturalWidth / img.naturalHeight);
+    };
+    img.onerror = () => {
+      if (!cancelled) setAspect(16 / 9);
     };
     img.src = url;
     return () => {
@@ -98,16 +102,11 @@ export function MapLeadToPlotDialog({
   const selectedProject = (projects ?? []).find((p) => p.id === projectId);
   const layoutPath = selectedProject?.layout_image_url ?? null;
 
-  // 2. Fetch layout image signed URL
+  // 2. Fetch layout image signed URL (with fallbacks for HTTP URLs, public storage, & legacy buckets)
   const { data: layoutUrl, isLoading: layoutUrlLoading } = useQuery({
     queryKey: ["map-lead-layout-url", layoutPath],
     enabled: !!layoutPath,
-    queryFn: async () => {
-      const { data } = await supabase.storage
-        .from("project-layouts")
-        .createSignedUrl(layoutPath!, 3600);
-      return data?.signedUrl ?? null;
-    },
+    queryFn: () => resolveProjectLayoutUrl(layoutPath),
   });
 
   // 3. Fetch plots for selected project
@@ -280,7 +279,7 @@ export function MapLeadToPlotDialog({
                     </defs>
 
                     {/* Background Layout Image */}
-                    <image href={layoutUrl} x={0} y={0} width={100} height={100} preserveAspectRatio="none" />
+                    <image href={layoutUrl} xlinkHref={layoutUrl} x={0} y={0} width={100} height={100} preserveAspectRatio="none" />
 
                     {/* Interactive Plot Polygons - All visible, only available clickable */}
                     {mappedPlots.map((p) => {

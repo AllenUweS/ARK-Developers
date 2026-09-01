@@ -488,8 +488,16 @@ export function LeadsCRM({ userId }: { userId: string }) {
 
   const deleteLead = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).from("plot_leads").delete().eq("id", id);
+      const { data, error } = await (supabase as any)
+        .from("plot_leads")
+        .delete()
+        .eq("id", id)
+        .select();
+
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Unable to delete lead. You may not have permission or the lead was not found.");
+      }
     },
     onSuccess: () => {
       toast.success("Lead removed");

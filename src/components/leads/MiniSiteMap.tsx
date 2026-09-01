@@ -7,6 +7,7 @@ import {
   STATUS_PALETTE,
   pointsAttr,
   polygonCentroid,
+  resolveProjectLayoutUrl,
   type PlotRow,
   type PlotStatus,
   type Point,
@@ -26,6 +27,9 @@ function useImageAspect(url: string | null | undefined) {
     const img = new Image();
     img.onload = () => {
       if (!cancelled) setAspect(img.naturalWidth / img.naturalHeight);
+    };
+    img.onerror = () => {
+      if (!cancelled) setAspect(16 / 9);
     };
     img.src = url;
     return () => {
@@ -70,19 +74,7 @@ export function MiniSiteMap({
   const { data: layoutUrl } = useQuery({
     queryKey: ["mini-map-layout-url", layoutPath],
     enabled: !!layoutPath,
-    queryFn: async () => {
-      if (!layoutPath) return null;
-      if (layoutPath.startsWith("http://") || layoutPath.startsWith("https://")) {
-        return layoutPath;
-      }
-      const { data } = await supabase.storage
-        .from("project-layouts")
-        .createSignedUrl(layoutPath!, 3600);
-      if (data?.signedUrl) return data.signedUrl;
-
-      // Fallback to old project storage public URL for cloned projects
-      return `https://zolbuckwnjsxfgqqkcjj.supabase.co/storage/v1/object/public/project-layouts/${layoutPath}`;
-    },
+    queryFn: () => resolveProjectLayoutUrl(layoutPath),
   });
 
   const { data: plots, isLoading: plotsLoading } = useQuery({
@@ -163,7 +155,7 @@ export function MiniSiteMap({
             </filter>
           </defs>
 
-          <image href={layoutUrl} x={0} y={0} width={100} height={100} preserveAspectRatio="none" />
+          <image href={layoutUrl} xlinkHref={layoutUrl} x={0} y={0} width={100} height={100} preserveAspectRatio="none" />
 
           {/* Every other plot, dimmed for context */}
           {mapped

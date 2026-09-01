@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 export type PlotStatus = "available" | "pending" | "booked" | "reserved" | "sold" | "cancelled";
 export type PlotFacing =
   "north" | "south" | "east" | "west" | "north_east" | "north_west" | "south_east" | "south_west";
@@ -224,5 +226,27 @@ export interface PurchaserRecord {
     source?: string | null;
     notes?: string | null;
   } | null;
+}
+
+export async function resolveProjectLayoutUrl(layoutPath: string | null | undefined): Promise<string | null> {
+  if (!layoutPath) return null;
+  if (layoutPath.startsWith("http://") || layoutPath.startsWith("https://")) {
+    return layoutPath;
+  }
+
+  try {
+    const { data } = await supabase.storage
+      .from("project-layouts")
+      .createSignedUrl(layoutPath, 3600);
+
+    if (data?.signedUrl) {
+      return data.signedUrl;
+    }
+  } catch (e) {
+    // Ignore signedUrl error and fall back to legacy storage URL
+  }
+
+  // Fallback: try public URL from old project storage where the cloned database images were hosted
+  return `https://zolbuckwnjsxfgqqkcjj.supabase.co/storage/v1/object/public/project-layouts/${layoutPath}`;
 }
 

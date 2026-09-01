@@ -48,6 +48,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import {
   LEAD_STATUS_LABEL,
   LEAD_STATUS_ORDER,
@@ -736,9 +737,9 @@ export function LeadLifecycleTimeline({
     const rankA = getStageRank(a);
     const rankB = getStageRank(b);
     if (rankA !== rankB) {
-      return rankA - rankB;
+      return rankB - rankA; // Recent / higher steps come first (5, 4, 3, 2, 1)
     }
-    return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); // Newest timestamp first
   });
 
   return (
@@ -1176,12 +1177,10 @@ export function LeadLifecycleTimeline({
                     <Label className="text-xs font-medium text-foreground flex items-center gap-1">
                       <IndianRupee className="h-3 w-3 text-muted-foreground" /> Customer Budget
                     </Label>
-                    <Input
-                      type="number"
-                      placeholder="e.g. 2500000"
+                    <CurrencyInput
                       value={budget}
-                      onChange={(e) => setBudget(e.target.value)}
-                      className="h-9 text-xs bg-card"
+                      onChange={setBudget}
+                      placeholder="e.g. 25,00,000"
                     />
                   </div>
 
@@ -1580,13 +1579,10 @@ export function LeadLifecycleTimeline({
                   <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                     <IndianRupee className="h-4 w-4 text-amber-600" /> Offered / Negotiated Price (₹) <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    type="number"
-                    required
-                    placeholder="e.g. 2450000"
+                  <CurrencyInput
                     value={negotiatedPrice}
-                    onChange={(e) => setNegotiatedPrice(e.target.value)}
-                    className="h-10 text-xs bg-card border-amber-500/30 focus:border-amber-500 font-semibold text-foreground"
+                    onChange={setNegotiatedPrice}
+                    placeholder="e.g. 24,50,000"
                   />
                 </div>
 
@@ -1709,20 +1705,28 @@ export function LeadLifecycleTimeline({
         </div>
       )}
 
-      {/* ---- Chronological Audit Trail ---- */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" /> Full Lifecycle Audit Trail
-          </h4>
-          <span className="text-[11px] text-muted-foreground">
+      {/* ---- Reverse-Chronological Audit Trail (Recent / Latest First: 5 → 4 → 3 → 2 → 1) ---- */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-terracotta" /> Full Lifecycle Audit Trail
+            </h4>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-terracotta/10 text-terracotta border border-terracotta/20">
+              ↓ Most Recent First (Step 5 → 1)
+            </span>
+          </div>
+
+          <span className="text-[11px] text-muted-foreground font-medium">
             {timelineEvents.length} touchpoint{timelineEvents.length > 1 ? "s" : ""}
           </span>
         </div>
 
-        <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+        <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-gradient-to-b before:from-terracotta via-amber-500/40 to-border/30">
           {timelineEvents.map((evt, idx) => {
             const Icon = evt.icon;
+            const isLatest = idx === 0;
+            const stageRank = getStageRank(evt);
             const formattedTime = new Date(evt.timestamp).toLocaleString("en-IN", {
               day: "numeric",
               month: "short",
@@ -1731,27 +1735,50 @@ export function LeadLifecycleTimeline({
               minute: "2-digit",
             });
 
+            // Step color accents
+            let stepBadgeStyle = "bg-terracotta/10 text-terracotta border-terracotta/20";
+            if (stageRank === 5) stepBadgeStyle = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold";
+            else if (stageRank === 4) stepBadgeStyle = "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold";
+            else if (stageRank === 3) stepBadgeStyle = "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30 font-bold";
+            else if (stageRank === 2) stepBadgeStyle = "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30 font-bold";
+            else if (stageRank === 1) stepBadgeStyle = "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30 font-bold";
+
+            const stepLabel = Number.isInteger(stageRank) ? `Step ${stageRank}` : "Touchpoint";
+
             return (
               <div key={evt.id} className="relative group">
-                <div className="absolute -left-6 top-1 rounded-full p-1 bg-background border border-border group-hover:border-terracotta transition-colors shadow-2xs">
-                  <Icon className="h-3 w-3 text-terracotta" />
+                {/* Node icon pin on vertical timeline line */}
+                <div className={`absolute -left-6 top-1.5 rounded-full p-1 transition-all shadow-sm ${
+                  isLatest
+                    ? "bg-terracotta text-white border-2 border-background ring-4 ring-terracotta/20 animate-pulse"
+                    : "bg-background border border-border group-hover:border-terracotta text-terracotta"
+                }`}>
+                  <Icon className={`h-3 w-3 ${isLatest ? "text-white" : "text-terracotta"}`} />
                 </div>
 
-                <div className="rounded-lg border bg-card/60 hover:bg-card p-3.5 shadow-2xs transition-all space-y-2">
+                {/* Audit Card */}
+                <div
+                  className={`rounded-xl border p-4 transition-all space-y-2.5 ${
+                    isLatest
+                      ? "bg-gradient-to-r from-terracotta/10 via-amber-500/[0.04] to-card border-terracotta/40 shadow-md ring-1 ring-terracotta/20"
+                      : "bg-card/70 hover:bg-card border-border/80 shadow-2xs"
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                        {(() => {
-                          const stageRank = getStageRank(evt);
-                          const stepLabel = Number.isInteger(stageRank) ? `Step ${stageRank}` : "Touchpoint";
-                          return (
-                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-terracotta/10 text-terracotta border border-terracotta/20">
-                              {stepLabel}
-                            </span>
-                          );
-                        })()}
+                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${stepBadgeStyle}`}>
+                          {stepLabel}
+                        </span>
                         {evt.title}
                       </span>
+
+                      {isLatest && (
+                        <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-terracotta text-white shadow-2xs animate-pulse">
+                          🔥 Latest Activity
+                        </span>
+                      )}
+
                       {evt.channel && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-muted/60 text-muted-foreground">
                           {evt.channel}
@@ -1762,13 +1789,13 @@ export function LeadLifecycleTimeline({
                   </div>
 
                   {evt.notes && (
-                    <p className="text-xs text-muted-foreground leading-relaxed bg-muted/30 p-2.5 rounded-md border border-border/40 whitespace-pre-wrap italic">
+                    <p className="text-xs text-muted-foreground leading-relaxed bg-muted/30 p-2.5 rounded-lg border border-border/40 whitespace-pre-wrap italic">
                       "{evt.notes}"
                     </p>
                   )}
 
                   {evt.performer && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-0.5 border-t border-border/30">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1 border-t border-border/30">
                       <Avatar className="h-4 w-4">
                         <AvatarFallback className={`text-[8px] ${tintFor(evt.performer)}`}>
                           {initials(evt.performer)}

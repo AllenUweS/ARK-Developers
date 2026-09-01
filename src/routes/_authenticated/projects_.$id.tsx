@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { SiteMapper } from "@/components/site-mapper/SiteMapper";
+import { resolveProjectLayoutUrl } from "@/components/site-mapper/types";
 import { EditProjectDialog } from "@/components/EditProjectDialog";
 import { DocumentViewerModal } from "@/components/DocumentViewerModal";
 import { ProjectBankAccountsSection } from "@/components/projects/ProjectBankAccountsSection";
@@ -84,21 +85,7 @@ function ProjectDetail() {
   const { data: layoutUrl } = useQuery({
     queryKey: ["layout-url", layoutPath],
     enabled: !!layoutPath,
-    queryFn: async () => {
-      if (!layoutPath) return null;
-      if (layoutPath.startsWith("http://") || layoutPath.startsWith("https://")) {
-        return layoutPath;
-      }
-      const { data, error } = await supabase.storage
-        .from("project-layouts")
-        .createSignedUrl(layoutPath, 3600);
-
-      if (data?.signedUrl) return data.signedUrl;
-
-      // Fallback: try public URL from old project storage where the cloned database images were hosted
-      const oldStorageFallback = `https://zolbuckwnjsxfgqqkcjj.supabase.co/storage/v1/object/public/project-layouts/${layoutPath}`;
-      return oldStorageFallback;
-    },
+    queryFn: () => resolveProjectLayoutUrl(layoutPath),
   });
 
   const { data: documents } = useQuery({

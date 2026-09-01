@@ -24,6 +24,7 @@ import {
 import { PhoneInput } from "@/components/ui/phone-input";
 import { AadhaarInput } from "@/components/ui/aadhaar-input";
 import { PanInput } from "@/components/ui/pan-input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { sendBookingConfirmationWhatsApp } from "@/lib/whatsappService";
 import type { LeadRow } from "@/components/site-mapper/types";
 import { AttributionSelector, AttributionValue } from "@/components/common/AttributionSelector";
@@ -781,13 +782,11 @@ function BookingCheckout() {
               />
             </Field>
 
-            <Field label="Negotiated final price">
-              <Input
-                type="text"
-                value={formatINRInput(form.finalPrice)}
-                onChange={(e) => set("finalPrice", e.target.value.replace(/[^0-9]/g, ""))}
+            <Field label="Negotiated final price *">
+              <CurrencyInput
+                value={form.finalPrice}
+                onChange={(val) => set("finalPrice", val)}
                 placeholder="e.g. 5,40,00,000"
-                className="font-medium"
               />
             </Field>
 
@@ -804,27 +803,20 @@ function BookingCheckout() {
             </Field>
 
             <Field label="Paid today / Booking Amount">
-              <Input
-                type="text"
-                value={formatINRInput(form.advancePaid)}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9]/g, "");
-                  const num = raw ? parseInt(raw, 10) : 0;
+              <CurrencyInput
+                value={form.advancePaid}
+                onChange={(val) => {
+                  const num = val ? parseFloat(val) : 0;
                   if (finalPrice > 0 && num > finalPrice) {
                     toast.warning(`Paid today cannot exceed the total plot price of ${money(finalPrice)}`);
                     set("advancePaid", String(finalPrice));
                   } else {
-                    set("advancePaid", raw);
+                    set("advancePaid", val);
                   }
                 }}
                 placeholder="e.g. 5,00,000"
-                className={`font-medium ${advancePaid > finalPrice ? "border-destructive ring-1 ring-destructive" : ""}`}
+                error={advancePaid > finalPrice ? `Paid today cannot exceed total agreed price of ${money(finalPrice)}` : null}
               />
-              {advancePaid > finalPrice && (
-                <p className="text-[11px] text-destructive font-semibold mt-1">
-                  Paid today cannot exceed the total agreed price of {money(finalPrice)}
-                </p>
-              )}
             </Field>
 
             <Field label="Installments">
