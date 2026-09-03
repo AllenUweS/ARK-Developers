@@ -47,7 +47,7 @@ import { EMIScheduleGeneratorDialog } from "@/components/installments/EMISchedul
 import { downloadEMIStatementPDF, uploadEMIStatementPDFToStorage } from "@/lib/emiStatementPDF";
 import { sendEMIStatementWhatsApp } from "@/lib/whatsappService";
 import { reconcileScheduleRows } from "@/lib/emiReconciliation";
-import { syncPaymentToTally } from "@/lib/tallySync";
+import { syncPaymentToTally, markPaymentSyncedToTally } from "@/lib/tallySync";
 import { PaymentReferenceInput, validatePaymentReference } from "@/components/ui/payment-reference-input";
 import { Button } from "@/components/ui/button";
 import {
@@ -392,7 +392,7 @@ function InstallmentsPage() {
         }
       }
 
-      // 1. Insert installment payment voucher
+      // 1. Insert installment payment voucher with dynamic schema fallback
       const insertPayload: any = {
         booking_id: activeBooking.id,
         amount: amountNum,
@@ -405,12 +405,102 @@ function InstallmentsPage() {
         insertPayload.bank_account_id = payment.bank_account_id;
       }
 
-      const { data: newPaymentVoucher, error: pError } = await (supabase as any)
+      let newPaymentVoucher: any = null;
+      const { data: voucherRes, error: pError } = await (supabase as any)
         .from("installment_payments")
         .insert(insertPayload)
         .select()
-        .single();
-      if (pError) throw pError;
+        .maybeSingle();
+
+      if (pError) {
+        const isRlsError = pError.message?.includes("row-level security") || pError.code === "42501";
+        
+        if (isRlsError) {
+          console.warn("RLS restriction encountered on direct insert, attempting record_installment_payment_v2 RPC...");
+          const selectedBank = installmentBankAccounts.find((b: any) => b.id === payment.bank_account_id);
+          const bankRef = selectedBank ? ` [Deposit Bank: ${selectedBank.bank_name} ••••${selectedBank.account_number?.slice(-4)}]` : "";
+
+          const { data: rpcRes, error: rpcErr } = await (supabase as any).rpc("record_installment_payment_v2", {
+            _booking_id: activeBooking.id,
+            _amount: amountNum,
+            _paid_on: payment.paid_on,
+            _payment_method: payment.payment_method,
+            _reference_number: payment.reference_number || null,
+            _bank_account_id: payment.bank_account_id || null,
+            _notes: bankRef ? bankRef.trim() : null,
+          });
+
+          if (!rpcErr && rpcRes && rpcRes.success) {
+            newPaymentVoucher = {
+              id: rpcRes.id,
+              booking_id: activeBooking.id,
+              amount: amountNum,
+              paid_on: payment.paid_on,
+              payment_method: payment.payment_method,
+              reference_number: payment.reference_number,
+              created_by: user.id,
+            };
+          } else {
+            throw pError;
+          }
+        } else if (pError.message?.includes("bank_account_id") || pError.code === "PGRST204" || pError.message?.includes("schema cache")) {
+          console.warn("installment_payments.bank_account_id column not in schema cache, using core payload fallback:", pError.message);
+          const selectedBank = installmentBankAccounts.find((b: any) => b.id === payment.bank_account_id);
+          const bankRef = selectedBank ? ` [Deposit Bank: ${selectedBank.bank_name} ••••${selectedBank.account_number?.slice(-4)}]` : "";
+
+          const corePayload: any = {
+            booking_id: activeBooking.id,
+            amount: amountNum,
+            paid_on: payment.paid_on,
+            payment_method: payment.payment_method,
+            reference_number: payment.reference_number ? `${payment.reference_number}${bankRef}` : bankRef ? bankRef.trim() : null,
+            notes: bankRef ? bankRef.trim() : null,
+            created_by: user.id,
+          };
+
+          const { data: fallbackVoucher, error: fallbackError } = await (supabase as any)
+            .from("installment_payments")
+            .insert(corePayload)
+            .select()
+            .maybeSingle();
+
+          if (fallbackError) {
+            if (fallbackError.message?.includes("row-level security") || fallbackError.code === "42501") {
+              const { data: rpcRes, error: rpcErr } = await (supabase as any).rpc("record_installment_payment_v2", {
+                _booking_id: activeBooking.id,
+                _amount: amountNum,
+                _paid_on: payment.paid_on,
+                _payment_method: payment.payment_method,
+                _reference_number: payment.reference_number || null,
+                _bank_account_id: payment.bank_account_id || null,
+                _notes: bankRef ? bankRef.trim() : null,
+              });
+
+              if (!rpcErr && rpcRes && rpcRes.success) {
+                newPaymentVoucher = {
+                  id: rpcRes.id,
+                  booking_id: activeBooking.id,
+                  amount: amountNum,
+                  paid_on: payment.paid_on,
+                  payment_method: payment.payment_method,
+                  reference_number: payment.reference_number,
+                  created_by: user.id,
+                };
+              } else {
+                throw fallbackError;
+              }
+            } else {
+              throw fallbackError;
+            }
+          } else {
+            newPaymentVoucher = fallbackVoucher;
+          }
+        } else {
+          throw pError;
+        }
+      } else {
+        newPaymentVoucher = voucherRes;
+      }
 
       // 2. Full Schedule Reconciliation with Actual Payment Receipts
       const existingPayments = paymentsByBooking.get(activeBooking.id) ?? [];
@@ -478,36 +568,7 @@ function InstallmentsPage() {
         await supabase.from("plots").update({ status: "sold" }).eq("id", activeBooking.plot_id);
       }
 
-      // 5. Tally Prime Receipt Voucher Sync on Port 9000
-      try {
-        const selectedBank = installmentBankAccounts.find((b: any) => b.id === payment.bank_account_id);
-        const prjName = (activeBooking as any).plots?.projects?.name || "Project";
-        const prjCode = ((activeBooking as any).plots?.projects?.code || "PRJ").toUpperCase();
-        const plotNo = String((activeBooking as any).plots?.plot_number || "101");
-        const recRef = payment.reference_number || `REC-${prjCode}-${plotNo}-${allPayments.length.toString().padStart(2, "0")}`;
-
-        await syncPaymentToTally({
-          customerName: activeBooking.customer_name,
-          customerPhone: activeBooking.customer_phone || undefined,
-          plotNumber: plotNo,
-          projectName: prjName,
-          projectCode: prjCode,
-          amount: amountNum,
-          paymentMode: payment.payment_method,
-          paymentDate: payment.paid_on,
-          paymentRef: recRef,
-          bankName: selectedBank?.bank_name || undefined,
-          accountNumber: selectedBank?.account_number || undefined,
-          ifscCode: selectedBank?.ifsc_code || undefined,
-          bankLedger: selectedBank
-            ? `${selectedBank.bank_name} - ${selectedBank.account_number.slice(-4)}`
-            : undefined,
-        });
-      } catch (tallyErr) {
-        console.warn("Tally sync non-blocking error:", tallyErr);
-      }
-
-      // 6. Notification
+      // 5. Notification
       if (activeBooking.sales_executive_id) {
         const plotInfo = activeBooking.plots?.plot_number
           ? ` (Plot #${activeBooking.plots.plot_number})`
@@ -837,8 +898,19 @@ function InstallmentsPage() {
           },
         });
       } else {
-        toast.error(`WhatsApp Meta API Error: ${res.message || "Failed to send WhatsApp EMI Statement"}`, {
-          duration: 8000,
+        const isAuthErr = res.message?.includes("190") || res.message?.includes("Authentication");
+        const displayMsg = isAuthErr
+          ? "WhatsApp Meta Token Expired / Outdated in Browser. Please hard-refresh your browser page (Ctrl + Shift + R)."
+          : res.message || "Failed to send WhatsApp EMI Statement";
+
+        toast.error(`WhatsApp Meta API Error: ${displayMsg}`, {
+          duration: 10000,
+          action: res.deepLink
+            ? {
+                label: "Open 1-Tap WhatsApp",
+                onClick: () => window.open(res.deepLink, "_blank"),
+              }
+            : undefined,
         });
       }
     } catch (err: any) {
@@ -945,7 +1017,20 @@ function InstallmentsPage() {
             </div>
 
             {/* ACTION CONTROLS */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                onClick={() => {
+                  const activeTarget = bookings.find((b: any) => Number(b.total_price) - Number(b.advance_paid) > 0) || bookings[0];
+                  if (activeTarget) handleOpenRecordPayment(activeTarget);
+                  else toast.info("No active customer deals available for payment recording.");
+                }}
+                className="h-9 px-4 text-xs font-extrabold gap-1.5 rounded-xl bg-terracotta hover:bg-terracotta/90 text-white shadow-xs transition-all hover:scale-101 active:scale-95"
+              >
+                <Plus className="size-4" />
+                Record Payment
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -1442,7 +1527,7 @@ function InstallmentsPage() {
 
                     {/* 4. SYMMETRICAL 2-TIER ACTION HUB WITH CONSTRAINT ENFORCEMENT */}
                     <div className="flex flex-col gap-2 w-[220px]">
-                      {isAdmin && !completed && (
+                      {!completed && (
                         hasSavedSchedule ? (
                           /* SCHEDULE IS CONFIGURED -> UNLOCKED PRIMARY BUTTON */
                           <Button

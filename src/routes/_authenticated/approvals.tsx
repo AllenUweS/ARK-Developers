@@ -644,6 +644,14 @@ export function ApprovalsWorkspace() {
 
       if (error) throw error;
 
+      // Reset plot status back to AVAILABLE globally on Site Mapper
+      if (selectedBooking.plot_id) {
+        await (supabase as any)
+          .from("plots")
+          .update({ status: "available", selected_lead_id: null })
+          .eq("id", selectedBooking.plot_id);
+      }
+
       if (selectedBooking.sales_executive_id) {
         await (supabase as any).from("user_notifications").insert({
           user_id: selectedBooking.sales_executive_id,

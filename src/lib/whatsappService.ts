@@ -129,7 +129,7 @@ export function getEMISatementWhatsAppDeepLink(payload: EMIStatementWhatsAppPayl
   return `https://wa.me/${phoneWithCode}?text=${encodeURIComponent(messageText)}`;
 }
 
-const HARDCODED_ACCESS_TOKEN = "EAAONO18mvZBYBSXS2EC8lpbGH3vZBF68W9W83iEHZA5O3dlBAYOkprjRV5vqPz7VyaGHyl5LOqDM6iPQZBEoe1kLJqmlwZBrixBsOF6Q5ZBXB2XGSU3fZBlMwCeCISWZACF5e1ZBHw8p5jTdcRzYOw9OEsnet5dUh9tswvSreV2m00I71IHBmLUcZAQ4YgB8u7OOE2FZBhWj0ZAi7k4MXqoa2kOMbLHduT2Km6moZBOGYwg9A3uCai2EKBAUZBk9tnsUyIJSNuETmMVpgKaDZBiOMBRljpIAZAxz";
+const HARDCODED_ACCESS_TOKEN = "EAAONO18mvZBYBSdbjyzCWXo1QQu2BbAsWKxfyVzYbprm4nMUaRiDLUP96o8y9pXga2VB8zjwI7ZAsmKTRZA6xzIYgnz9AHu7uiemjvdhksWrY5tG7HT3YrWyXRuoOw9TmR07YU7joQ3ZBUJ2vb9p7yZCLfKUXLq3v5KfM7rwmGZCZB959s3NkYoUgBSZBFtrDrYjRqDyhbZBjdGQHwEaPZCeEacZAYjDzp2h6rvzkKsSOLGbZAgn10lp84Y2SzuHb7DlCLYZBlPZBenmuZBjaCQ5GZAxjowRNATs";
 const HARDCODED_PHONE_NUMBER_ID = "1126770290524197";
 const HARDCODED_BOOKING_TEMPLATE_NAME = "plot_booking_confirmation";
 const HARDCODED_EMI_TEMPLATE_NAME = "customer_emi_statement_v2";
@@ -271,47 +271,37 @@ export async function sendEMIStatementWhatsApp(
   const phoneWithCode = formatWhatsAppPhone(payload.customerPhone);
   const preferredLang = import.meta.env.VITE_WHATSAPP_LANGUAGE_CODE || "en";
 
-  async function postTemplate(langCode: string, headerMode: "document" | "text" | "none" = "document") {
-    const components: any[] = [];
-    if (headerMode === "document" && payload.pdfDocumentUrl) {
-      components.push({
+  async function postTemplate(langCode: string) {
+    const pdfUrl = payload.pdfDocumentUrl || "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+
+    const components: any[] = [
+      {
         type: "header",
         parameters: [
           {
             type: "document",
             document: {
-              link: payload.pdfDocumentUrl,
+              link: pdfUrl,
               filename: payload.pdfFileName || "EMI_Statement.pdf",
             },
           },
         ],
-      });
-    } else if (headerMode === "text") {
-      components.push({
-        type: "header",
+      },
+      {
+        type: "body",
         parameters: [
-          {
-            type: "text",
-            text: "HAEGL Tech",
-          },
+          { type: "text", text: payload.customerName },                  // {{1}}
+          { type: "text", text: payload.unitProjectDetails },            // {{2}}
+          { type: "text", text: formatMoneyRs(payload.totalContractPrice) }, // {{3}}
+          { type: "text", text: formatMoneyRs(payload.totalAmountRealized) }, // {{4}}
+          { type: "text", text: formatMoneyRs(payload.remainingBalance) },   // {{5}}
+          { type: "text", text: payload.paidInstallmentsText },          // {{6}}
+          { type: "text", text: payload.pendingInstallmentsText },       // {{7}}
+          { type: "text", text: formatDate(payload.nextDueDate) },       // {{8}}
+          { type: "text", text: formatMoneyRs(payload.nextDueAmount) },  // {{9}}
         ],
-      });
-    }
-
-    components.push({
-      type: "body",
-      parameters: [
-        { type: "text", text: payload.customerName },                  // {{1}}
-        { type: "text", text: payload.unitProjectDetails },            // {{2}}
-        { type: "text", text: formatMoneyRs(payload.totalContractPrice) }, // {{3}}
-        { type: "text", text: formatMoneyRs(payload.totalAmountRealized) }, // {{4}}
-        { type: "text", text: formatMoneyRs(payload.remainingBalance) },   // {{5}}
-        { type: "text", text: payload.paidInstallmentsText },          // {{6}}
-        { type: "text", text: payload.pendingInstallmentsText },       // {{7}}
-        { type: "text", text: formatDate(payload.nextDueDate) },       // {{8}}
-        { type: "text", text: formatMoneyRs(payload.nextDueAmount) },  // {{9}}
-      ],
-    });
+      },
+    ];
 
     return fetch(
       `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
@@ -368,74 +358,41 @@ export async function sendEMIStatementWhatsApp(
   }
 
   try {
-    // 1. Try single Template Message with Document Header if PDF link exists
-    if (payload.pdfDocumentUrl) {
-      let docTemplateResp = await postTemplate(preferredLang, "document");
-      let docTemplateResult = await docTemplateResp.json();
+    let docTemplateResp = await postTemplate(preferredLang);
+    let docTemplateResult = await docTemplateResp.json();
 
-      if (!docTemplateResp.ok && (docTemplateResult.error?.code === 132001 || docTemplateResult.error?.message?.includes("translation"))) {
-        const alternateLang = preferredLang === "en" ? "en_US" : "en";
-        docTemplateResp = await postTemplate(alternateLang, "document");
-        docTemplateResult = await docTemplateResp.json();
-      }
+    if (!docTemplateResp.ok && (docTemplateResult.error?.code === 132001 || docTemplateResult.error?.message?.includes("translation"))) {
+      const alternateLang = preferredLang === "en" ? "en_US" : "en";
+      docTemplateResp = await postTemplate(alternateLang);
+      docTemplateResult = await docTemplateResp.json();
+    }
 
-      // If Meta approved document header on template, single message succeeded!
-      if (docTemplateResp.ok) {
+    if (docTemplateResp.ok) {
+      return {
+        success: true,
+        mode: "api",
+        message: `Single PDF Statement message successfully sent to ${phoneWithCode} via WhatsApp!`,
+      };
+    }
+
+    if (docTemplateResult.error?.code === 132012 || docTemplateResult.error?.message?.includes("Format mismatch")) {
+      console.log("[WhatsApp EMI API] Template header format error. Attempting Direct PDF Document Message...");
+      const directOk = await postDirectDocument();
+      if (directOk) {
         return {
           success: true,
           mode: "api",
-          message: `Single PDF Statement message successfully sent to ${phoneWithCode} via WhatsApp!`,
+          message: `Single PDF Statement document successfully sent to ${phoneWithCode} via WhatsApp!`,
         };
       }
-
-      // If Meta returned #132012 (Header format mismatch), dispatch 1 single Direct PDF Document Message!
-      if (docTemplateResult.error?.code === 132012 || docTemplateResult.error?.message?.includes("Format mismatch") || docTemplateResult.error?.message?.includes("header")) {
-        console.log("[WhatsApp EMI API] Template header format error. Attempting Direct PDF Document Message...");
-        const directOk = await postDirectDocument();
-        if (directOk) {
-          return {
-            success: true,
-            mode: "api",
-            message: `Single PDF Statement document successfully sent to ${phoneWithCode} via WhatsApp!`,
-          };
-        }
-      }
-
-      // If document template failed, return specific Meta API error with deepLink fallback
-      const errMsg = docTemplateResult.error?.error_data?.details || docTemplateResult.error?.message || "WhatsApp API call failed";
-      return {
-        success: false,
-        mode: "api",
-        deepLink,
-        message: `(#${docTemplateResult.error?.code || "API"}) ${errMsg}`,
-      };
     }
 
-    // 2. Standard single Template Message dispatch (Text only) - only used if no PDF document URL exists
-    let response = await postTemplate(preferredLang, "document");
-    let result = await response.json();
-
-    if (!response.ok && (result.error?.code === 132001 || result.error?.message?.includes("translation"))) {
-      const alternateLang = preferredLang === "en" ? "en_US" : "en";
-      response = await postTemplate(alternateLang, "document");
-      result = await response.json();
-    }
-
-    if (!response.ok) {
-      console.warn("[WhatsApp EMI API Error]", result);
-      const errMsg = result.error?.error_data?.details || result.error?.message || "WhatsApp API call failed";
-      return {
-        success: false,
-        mode: "api",
-        deepLink,
-        message: `(#${result.error?.code || "API"}) ${errMsg}`,
-      };
-    }
-
+    const errMsg = docTemplateResult.error?.error_data?.details || docTemplateResult.error?.message || "WhatsApp API call failed";
     return {
-      success: true,
+      success: false,
       mode: "api",
-      message: `EMI Statement summary successfully sent to ${phoneWithCode} via WhatsApp!`,
+      deepLink,
+      message: `(#${docTemplateResult.error?.code || "API"}) ${errMsg}`,
     };
   } catch (err: any) {
     return {

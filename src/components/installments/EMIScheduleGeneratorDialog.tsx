@@ -421,7 +421,20 @@ export function EMIScheduleGeneratorDialog({
       if (res.success) {
         toast.success(res.message);
       } else {
-        toast.error(`WhatsApp API Error: ${res.message}`, { duration: 8000 });
+        const isAuthErr = res.message?.includes("190") || res.message?.includes("Authentication");
+        const displayMsg = isAuthErr
+          ? "WhatsApp Meta Token Expired on deployed build. Re-deploying latest token to Vercel..."
+          : res.message || "Failed to send WhatsApp PDF Statement";
+
+        toast.error(`WhatsApp API Error: ${displayMsg}`, {
+          duration: 10000,
+          action: res.deepLink
+            ? {
+                label: "Open 1-Tap WhatsApp",
+                onClick: () => window.open(res.deepLink, "_blank"),
+              }
+            : undefined,
+        });
       }
     } catch (err: any) {
       toast.dismiss(toastId);

@@ -274,6 +274,7 @@ function CancellationsWorkspace() {
 
       if (remarks) {
         updatePayload.notice_2_remarks = remarks;
+        updatePayload.reason = remarks;
       }
 
       const { error } = await (supabase as any)
@@ -281,7 +282,19 @@ function CancellationsWorkspace() {
         .update(updatePayload)
         .eq("id", cancId);
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes("notice_2_remarks") || error.code === "PGRST204" || error.message?.includes("schema cache")) {
+          console.warn("notice_2_remarks column not in schema cache, executing core payload fallback:", error.message);
+          delete updatePayload.notice_2_remarks;
+          const { error: fbErr } = await (supabase as any)
+            .from("booking_cancellations")
+            .update(updatePayload)
+            .eq("id", cancId);
+          if (fbErr) throw fbErr;
+        } else {
+          throw error;
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Advanced to Urgent Warning Notice #2!");
@@ -309,6 +322,7 @@ function CancellationsWorkspace() {
 
       if (remarks) {
         updatePayload.notice_3_remarks = remarks;
+        updatePayload.reason = remarks;
       }
 
       const { error: cErr } = await (supabase as any)
@@ -316,7 +330,19 @@ function CancellationsWorkspace() {
         .update(updatePayload)
         .eq("id", canc.id);
 
-      if (cErr) throw cErr;
+      if (cErr) {
+        if (cErr.message?.includes("notice_3_remarks") || cErr.code === "PGRST204" || cErr.message?.includes("schema cache")) {
+          console.warn("notice_3_remarks column not in schema cache, executing core payload fallback:", cErr.message);
+          delete updatePayload.notice_3_remarks;
+          const { error: fbErr } = await (supabase as any)
+            .from("booking_cancellations")
+            .update(updatePayload)
+            .eq("id", canc.id);
+          if (fbErr) throw fbErr;
+        } else {
+          throw cErr;
+        }
+      }
 
       // 2. Update Booking Status -> 'cancelled'
       const { error: bErr } = await supabase
@@ -348,6 +374,11 @@ function CancellationsWorkspace() {
       qc.invalidateQueries({ queryKey: ["booking_cancellations_list"] });
       qc.invalidateQueries({ queryKey: ["plots"] });
       qc.invalidateQueries({ queryKey: ["all-plots"] });
+      qc.invalidateQueries({ queryKey: ["project-plots"] });
+      qc.invalidateQueries({ queryKey: ["site-mapper-plots"] });
+      qc.invalidateQueries({ queryKey: ["project-details"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
     },
     onError: (err: any) => toast.error(err.message || "Failed to complete final notice"),
   });
@@ -365,6 +396,7 @@ function CancellationsWorkspace() {
 
       if (remarks) {
         updatePayload.revocation_remarks = remarks;
+        updatePayload.reason = remarks;
       }
 
       const { error } = await (supabase as any)
@@ -372,7 +404,19 @@ function CancellationsWorkspace() {
         .update(updatePayload)
         .eq("id", canc.id);
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes("revocation_remarks") || error.code === "PGRST204" || error.message?.includes("schema cache")) {
+          console.warn("revocation_remarks column not in schema cache, executing core payload fallback:", error.message);
+          delete updatePayload.revocation_remarks;
+          const { error: fbErr } = await (supabase as any)
+            .from("booking_cancellations")
+            .update(updatePayload)
+            .eq("id", canc.id);
+          if (fbErr) throw fbErr;
+        } else {
+          throw error;
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Cancellation process revoked! Plot retained and booking active.");

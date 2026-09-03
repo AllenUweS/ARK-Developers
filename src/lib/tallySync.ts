@@ -20,6 +20,7 @@ export interface TallyBookingPayload {
 }
 
 export interface TallyPaymentPayload {
+  paymentId?: string;
   customerName: string;
   customerPhone?: string;
   plotNumber: string;
@@ -276,6 +277,8 @@ export async function syncPaymentToTally(data: TallyPaymentPayload) {
 
   const narration = `Payment Collection for Plot #${data.plotNumber} | Customer: ${data.customerName} | Project: ${projectName} [${projectCode}] | Mode: ${data.paymentMode || "Bank"} | Bank: ${bankLedger} | Ref: ${voucherNum}`;
 
+  const remoteId = data.paymentId ? `PAY-${data.paymentId}` : voucherNum;
+
   // 2. Create Receipt Voucher
   const receiptXml = `
 <ENVELOPE>
@@ -297,8 +300,8 @@ export async function syncPaymentToTally(data: TallyPaymentPayload) {
             <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>
             <VOUCHERNUMBER>${voucherNum}</VOUCHERNUMBER>
             <REFERENCE>${voucherNum}</REFERENCE>
-            <REMOTEID>${voucherNum}</REMOTEID>
-            <GUID>${voucherNum}</GUID>
+            <REMOTEID>${remoteId}</REMOTEID>
+            <GUID>${remoteId}</GUID>
             <PARTYLEDGERNAME>${ledgerName}</PARTYLEDGERNAME>
             <NARRATION>${narration}</NARRATION>
             <ALLLEDGERENTRIES.LIST>
@@ -523,10 +526,12 @@ export function resetTallySyncForBooking(bookingId: string, paymentIds: string[]
 export async function syncCustomerLedgerUnified({
   booking,
   payments = [],
+  bankAccounts = [],
   forceResync = false,
 }: {
   booking: any;
   payments?: any[];
+  bankAccounts?: any[];
   forceResync?: boolean;
 }): Promise<{
   success: boolean;
@@ -592,9 +597,22 @@ export async function syncCustomerLedgerUnified({
 
       if (!paymentAlreadySynced || forceResync) {
         const recRef = p.reference_number || `REC-${prjCode}-${plotNo}-${String(i + 1).padStart(2, "0")}`;
-        const bankName = `${prjName} Collection Bank A/c`;
+        
+        let bankName = `${prjName} Collection Bank A/c`;
+        if (p.bank_account_id && bankAccounts.length > 0) {
+          const matchBank = bankAccounts.find((b: any) => b.id === p.bank_account_id);
+          if (matchBank) {
+            bankName = `${matchBank.bank_name} - ${matchBank.account_number?.slice(-4) || "0000"}`;
+          }
+        } else if (p.notes && (p.notes.includes("Deposit Bank:") || p.notes.includes("Bank:"))) {
+          const match = p.notes.match(/Bank:\s*([^\•\-\]\,]+)/);
+          if (match && match[1]) {
+            bankName = match[1].trim();
+          }
+        }
 
         const payRes = await syncPaymentToTally({
+          paymentId: pId,
           customerName: booking.customer_name || "Customer",
           customerPhone: booking.customer_phone || undefined,
           plotNumber: plotNo,

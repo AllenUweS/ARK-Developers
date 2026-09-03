@@ -49,6 +49,32 @@ export function CustomerTallyLedgerModal({
 }: CustomerTallyLedgerModalProps) {
   const [syncing, setSyncing] = useState(false);
   const [showAccountingHelp, setShowAccountingHelp] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const toggleRowSync = (row: any) => {
+    if (typeof window === "undefined" || !booking) return;
+    const keyPrefix = "tally_sync_v1_";
+    if (row.vchType === "Sales") {
+      const key = `${keyPrefix}bkg_${booking.id}`;
+      if (row.isSynced) {
+        localStorage.removeItem(key);
+        toast.info("Marked Sales Voucher as Pending Tally Sync");
+      } else {
+        localStorage.setItem(key, new Date().toISOString());
+        toast.success("Marked Sales Voucher as Synced");
+      }
+    } else {
+      const key = `${keyPrefix}pay_${row.id}`;
+      if (row.isSynced) {
+        localStorage.removeItem(key);
+        toast.info("Marked Payment Receipt as Pending Tally Sync");
+      } else {
+        localStorage.setItem(key, new Date().toISOString());
+        toast.success("Marked Payment Receipt as Synced");
+      }
+    }
+    setRefreshKey((k) => k + 1);
+  };
 
   // Fetch all recorded installment payments for this booking
   const { data: payments = [], refetch: refetchPayments } = useQuery({
@@ -188,7 +214,7 @@ export function CustomerTallyLedgerModal({
     }
 
     return entries;
-  }, [booking, payments, bankAccounts, totalPrice, advancePaid, prjCode, prjName, plotNo, bkgRef]);
+  }, [booking, payments, bankAccounts, totalPrice, advancePaid, prjCode, prjName, plotNo, bkgRef, refreshKey]);
 
   const totalCollected = useMemo(() => {
     return statement.reduce((sum, item) => sum + item.credit, 0);
@@ -205,6 +231,7 @@ export function CustomerTallyLedgerModal({
       const res = await syncCustomerLedgerUnified({
         booking,
         payments,
+        bankAccounts,
         forceResync,
       });
 
@@ -305,7 +332,13 @@ export function CustomerTallyLedgerModal({
         toast.success(res.message);
       } else {
         toast.error(`WhatsApp Meta API Error: ${res.message || "Failed to send WhatsApp EMI Statement"}`, {
-          duration: 8000,
+          duration: 10000,
+          action: res.deepLink
+            ? {
+                label: "Open 1-Tap WhatsApp",
+                onClick: () => window.open(res.deepLink, "_blank"),
+              }
+            : undefined,
         });
       }
     } catch (err: any) {
@@ -365,7 +398,15 @@ export function CustomerTallyLedgerModal({
       if (res.success) {
         toast.success(res.message);
       } else {
-        toast.error(`WhatsApp API Error: ${res.message}`, { duration: 8000 });
+        toast.error(`WhatsApp API Error: ${res.message}`, {
+          duration: 10000,
+          action: res.deepLink
+            ? {
+                label: "Open 1-Tap WhatsApp",
+                onClick: () => window.open(res.deepLink, "_blank"),
+              }
+            : undefined,
+        });
       }
     } catch (err: any) {
       toast.dismiss(toastId);
@@ -624,21 +665,28 @@ export function CustomerTallyLedgerModal({
                       )}
                     </td>
                     <td className="py-3 px-3 text-center font-sans whitespace-nowrap">
-                      {row.isSynced ? (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 inline-flex items-center"
-                        >
-                          <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Synced
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 inline-flex items-center"
-                        >
-                          <Clock className="h-3 w-3 text-amber-600 animate-pulse" /> Pending
-                        </Badge>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleRowSync(row)}
+                        className="cursor-pointer hover:opacity-80 transition-opacity"
+                        title={row.isSynced ? "Click to toggle status to Pending" : "Click to toggle status to Synced"}
+                      >
+                        {row.isSynced ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 inline-flex items-center"
+                          >
+                            <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Synced
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 inline-flex items-center"
+                          >
+                            <Clock className="h-3 w-3 text-amber-600 animate-pulse" /> Pending
+                          </Badge>
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))}
