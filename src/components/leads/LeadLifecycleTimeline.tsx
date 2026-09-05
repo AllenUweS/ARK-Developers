@@ -1039,6 +1039,42 @@ export function LeadLifecycleTimeline({
               {droppedByName ? ` by ${droppedByName}` : ""}
             </p>
           )}
+
+          <div className="pt-2 flex justify-end border-t border-red-500/20">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await (supabase as any)
+                    .from("plot_leads")
+                    .update({ status: "negotiating", plot_id: null })
+                    .eq("id", lead.id);
+
+                  await (supabase as any).from("lead_activities").insert({
+                    lead_id: lead.id,
+                    activity_type: "reopened",
+                    from_status: "dropped",
+                    to_status: "negotiating",
+                    performed_by: userId,
+                    notes: "🔄 Lead Re-opened from Dropped — Moved back to active Negotiating pipeline for alternative plots",
+                  });
+
+                  toast.success("🎉 Lead re-opened and restored to Negotiating stage!");
+                  if (onStatusChange) onStatusChange(lead.id, "negotiating");
+                  qc.invalidateQueries({ queryKey: ["lead-activities", lead.id] });
+                  qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+                  qc.invalidateQueries({ queryKey: ["plot-leads"] });
+                  qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+                } catch (err: any) {
+                  toast.error(err.message || "Failed to re-open lead");
+                }
+              }}
+              className="text-xs h-8 border-terracotta/40 text-terracotta hover:bg-terracotta/10 cursor-pointer gap-1.5 font-bold"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Re-open / Revive Lead to Pipeline
+            </Button>
+          </div>
         </div>
       )}
 

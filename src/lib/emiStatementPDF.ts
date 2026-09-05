@@ -63,7 +63,7 @@ const formatDate = (dateStr?: string) => {
   }
 };
 
-export function generateEMIStatementHTML(data: EMIStatementPDFData): string {
+export function generateEMIStatementHTML(data: EMIStatementPDFData, logoUrl?: string): string {
   const {
     customerName = "Customer",
     customerPhone = "N/A",
@@ -320,51 +320,78 @@ export function generateEMIStatementHTML(data: EMIStatementPDFData): string {
     .header-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
+      margin-bottom: 18px;
       border-bottom: 2.5px solid #0f172a;
     }
+    .header-table td {
+      padding-top: 4px;
+      padding-bottom: 14px;
+      vertical-align: middle;
+    }
+    .logo-cell {
+      width: 75px;
+      padding-right: 14px;
+      vertical-align: middle;
+    }
+    .brand-cell {
+      vertical-align: middle;
+    }
+    .brand-kicker {
+      font-size: 9.5px;
+      font-weight: 800;
+      color: #c85a32;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      margin: 0 0 2px 0;
+      line-height: 1.2;
+    }
     .brand-title {
-      font-size: 22px;
+      font-size: 21px;
       font-weight: 900;
       color: #0f172a;
-      letter-spacing: -0.5px;
+      letter-spacing: -0.3px;
       text-transform: uppercase;
       margin: 0;
+      line-height: 1.15;
     }
     .brand-sub {
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 700;
       color: #c85a32;
-      letter-spacing: 1px;
+      letter-spacing: 0.8px;
       text-transform: uppercase;
-      margin-top: 3px;
+      margin: 3px 0 0 0;
+      line-height: 1.25;
     }
     .brand-tagline {
-      font-size: 10px;
+      font-size: 9.5px;
       color: #64748b;
-      margin-top: 2px;
+      margin-top: 5px;
+      line-height: 1.35;
     }
     .doc-meta {
       text-align: right;
       vertical-align: middle;
+      width: 250px;
     }
     .doc-badge {
       display: inline-block;
       background: #0f172a;
       color: #ffffff;
-      padding: 4px 12px;
+      padding: 5px 12px;
       border-radius: 6px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 800;
       letter-spacing: 0.8px;
       text-transform: uppercase;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);
     }
     .doc-ref-text {
-      font-size: 10px;
+      font-size: 9.5px;
       color: #64748b;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       margin-top: 4px;
+      line-height: 1.35;
     }
     .dossier-grid {
       width: 100%;
@@ -554,13 +581,11 @@ export function generateEMIStatementHTML(data: EMIStatementPDFData): string {
   <div class="container">
     <table class="header-table">
       <tr>
-        <td style="width: 75px; vertical-align: middle; padding-right: 12px;">
-          <img src="/ark-logo.png" alt="Ark Logo" style="height: 55px; width: auto; object-fit: contain; display: block;" onerror="this.style.display='none'" />
+        <td class="logo-cell">
+          <img src="${logoUrl || "/ark-logo.png"}" alt="Ark Logo" style="height: 52px; width: auto; object-fit: contain; display: block;" onerror="this.style.display='none'" />
         </td>
-        <td style="vertical-align: middle;">
-          <div style="font-size: 9.5px; font-weight: 800; color: #c85a32; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 2px;">
-            ARK BUILDERS & DEVELOPERS
-          </div>
+        <td class="brand-cell">
+          <div class="brand-kicker">ARK BUILDERS & DEVELOPERS</div>
           <h1 class="brand-title">${projectName}</h1>
           <div class="brand-sub">Premium Plotted Development & Housing Schemes</div>
           <div class="brand-tagline">Corporate Office: SVB City Center, Club Road, Hubballi • Tally Prime Port 9000 Verified Ledger</div>
@@ -793,83 +818,161 @@ export function downloadEMIStatementPDF(data: EMIStatementPDFData) {
   }
 }
 
+let cachedLogoDataUrl: string | null = null;
+export async function getArkLogoDataUrl(): Promise<string> {
+  if (cachedLogoDataUrl) return cachedLogoDataUrl;
+  if (typeof window === "undefined") return "/ark-logo.png";
+  try {
+    const res = await fetch("/ark-logo.png");
+    if (!res.ok) return "/ark-logo.png";
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        cachedLogoDataUrl = (reader.result as string) || "/ark-logo.png";
+        resolve(cachedLogoDataUrl);
+      };
+      reader.onerror = () => resolve("/ark-logo.png");
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return "/ark-logo.png";
+  }
+}
+
 export async function convertHTMLToPDFBlob(htmlContent: string): Promise<Blob> {
   if (typeof window === "undefined" || !document) {
     throw new Error("convertHTMLToPDFBlob must run in browser environment");
   }
 
-  const styleMatches = htmlContent.match(/<style[\s\S]*?<\/style>/gi) || [];
-  const styleString = styleMatches.join("\n");
+  // 1. Remove print scripts & interactive print-bar header
+  let cleanHtml = htmlContent
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<div class="print-bar"[\s\S]*?<\/div>\s*(?=<div class="container")/is, "");
 
-  const bodyMatch = htmlContent.match(/<body[\s\S]*?>([\s\S]*?)<\/body>/i);
-  const bodyContent = bodyMatch ? bodyMatch[1] : htmlContent;
+  // Ensure print-bar is hidden if any remained, and force clean white background
+  cleanHtml = cleanHtml.replace(
+    "</head>",
+    "<style>.print-bar { display: none !important; } html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; }</style></head>"
+  );
 
-  const container = document.createElement("div");
-  container.style.position = "fixed";
-  container.style.left = "-9999px";
-  container.style.top = "-9999px";
-  container.style.width = "900px";
-  container.style.backgroundColor = "#ffffff";
-  container.style.zIndex = "-9999";
-  container.innerHTML = `${styleString}\n<div style="background:#ffffff; color:#0f172a; padding:15px; font-family: sans-serif;">${bodyContent}</div>`;
-  document.body.appendChild(container);
+  // 2. Create an isolated hidden iframe
+  // CRITICAL: Tailwind CSS v4 in the parent document uses CSS Color Level 4 oklch(...) colors.
+  // html2canvas throws 'Attempting to parse an unsupported color function "oklch"' if run in document.body.
+  // By rendering inside an isolated iframe, html2canvas ONLY inspects the statement's own pure-hex stylesheet.
+  const existingFrame = document.getElementById("ark-statement-render-iframe");
+  if (existingFrame) {
+    existingFrame.remove();
+  }
+
+  const iframe = document.createElement("iframe");
+  iframe.id = "ark-statement-render-iframe";
+  iframe.style.position = "fixed";
+  iframe.style.left = "0px";
+  iframe.style.top = "0px";
+  iframe.style.width = "850px";
+  iframe.style.height = "1200px";
+  iframe.style.border = "none";
+  iframe.style.zIndex = "-999999";
+  iframe.style.pointerEvents = "none";
+  iframe.style.opacity = "1";
+  iframe.style.visibility = "visible";
+  document.body.appendChild(iframe);
 
   try {
-    const canvasPromise = html2canvas(container, {
+    const frameDoc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!frameDoc) {
+      throw new Error("Unable to access statement iframe document");
+    }
+
+    frameDoc.open();
+    frameDoc.write(cleanHtml);
+    frameDoc.close();
+
+    // 3. Wait for all images inside iframe to finish loading
+    const imgElements = Array.from(frameDoc.querySelectorAll("img"));
+    if (imgElements.length > 0) {
+      await Promise.all(
+        imgElements.map((img) => {
+          if (img.complete) return Promise.resolve(null);
+          return new Promise((resolve) => {
+            img.onload = () => resolve(null);
+            img.onerror = () => resolve(null);
+            setTimeout(resolve, 2000);
+          });
+        })
+      );
+    }
+
+    // Give iframe a moment to calculate table layout
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const targetEl = frameDoc.body || frameDoc.documentElement;
+    const contentHeight = Math.max(targetEl.scrollHeight, targetEl.offsetHeight, 1000);
+    iframe.style.height = `${contentHeight + 50}px`;
+
+    // 4. Capture inside iframe using html2canvas
+    const canvas = await html2canvas(targetEl, {
       scale: 2,
       useCORS: true,
-      logging: false,
-      allowTaint: true,
+      allowTaint: false,
       backgroundColor: "#ffffff",
-      imageTimeout: 3000,
+      scrollX: 0,
+      scrollY: 0,
+      x: 0,
+      y: 0,
+      width: 850,
+      height: contentHeight,
+      windowWidth: 850,
+      windowHeight: contentHeight,
+      logging: false,
     });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("html2canvas render timeout")), 4000)
-    );
-
-    const canvas = await Promise.race([canvasPromise, timeoutPromise]);
-
-    const imgData = canvas.toDataURL("image/png");
+    // 5. Convert to high-clarity JPEG (95% quality for lightweight WhatsApp transport)
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
     const pdf = new jsPDF({
       orientation: "portrait",
       unit: "mm",
       format: "a4",
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    const pageWidthMm = pdf.internal.pageSize.getWidth(); // 210mm
+    const pageHeightMm = pdf.internal.pageSize.getHeight(); // 297mm
+    const pdfWidth = pageWidthMm;
+    const totalPdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    let heightLeft = totalPdfHeight;
+    let position = 0;
+
+    // Page 1
+    pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, totalPdfHeight);
+    heightLeft -= pageHeightMm;
+
+    // Subsequent pages if statement spans multiple pages
+    while (heightLeft > 5) {
+      position = position - pageHeightMm;
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, totalPdfHeight);
+      heightLeft -= pageHeightMm;
+    }
+
     return pdf.output("blob");
   } finally {
-    if (document.body.contains(container)) {
-      document.body.removeChild(container);
+    if (document.body.contains(iframe)) {
+      document.body.removeChild(iframe);
     }
   }
 }
 
+export async function generateEMIStatementPDFBlob(data: EMIStatementPDFData): Promise<Blob> {
+  const logoUrl = await getArkLogoDataUrl();
+  const htmlContent = generateEMIStatementHTML(data, logoUrl);
+  return await convertHTMLToPDFBlob(htmlContent);
+}
+
 export async function uploadEMIStatementPDFToStorage(data: EMIStatementPDFData): Promise<string> {
   try {
-    let pdfBlob: Blob;
-    try {
-      const htmlContent = generateEMIStatementHTML(data);
-      pdfBlob = await convertHTMLToPDFBlob(htmlContent);
-    } catch (renderErr) {
-      console.warn("[HTML Canvas Render Warning, using vector PDF fallback]", renderErr);
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text((data.projectName || "REAL ESTATE DEVELOPERS").toUpperCase(), 14, 18);
-      doc.setFontSize(10);
-      doc.text(`Official EMI Statement - Plot #${data.plotNumber}`, 14, 25);
-      doc.text(`Customer: ${data.customerName}`, 14, 32);
-      doc.text(`Total Agreement Value: Rs. ${Math.round(data.totalPrice || 0).toLocaleString("en-IN")}`, 14, 39);
-      doc.text(`Advance Paid: Rs. ${Math.round(data.advancePaid || 0).toLocaleString("en-IN")}`, 14, 46);
-      doc.text(`Remaining Receivable: Rs. ${Math.round(data.remainingBalance || 0).toLocaleString("en-IN")}`, 14, 53);
-      pdfBlob = doc.output("blob");
-    }
-
+    const pdfBlob = await generateEMIStatementPDFBlob(data);
     const fileName = `statements/EMI_Statement_${(data.projectCode || "PRJ").toUpperCase()}_Plot_${data.plotNumber}_${Date.now()}.pdf`;
 
     let { error: uploadErr } = await supabase.storage
@@ -896,7 +999,6 @@ export async function uploadEMIStatementPDFToStorage(data: EMIStatementPDFData):
 
     if (uploadErr) {
       console.warn("[Storage Upload Warning project-layouts]", uploadErr);
-      // Fallback: Try uploading to 'project-documents' bucket if project-layouts fails
       const fallbackUpload = await supabase.storage
         .from("project-documents")
         .upload(fileName, pdfBlob, {

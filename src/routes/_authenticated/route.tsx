@@ -217,7 +217,7 @@ function AuthedLayout() {
         ...(role === "admin" || role === "super_admin" || role === "manager" || role === "management" || role === "accounts" || role === "crm"
           ? [{ to: "/messages" as const, label: "Messages", icon: MessageSquare }]
           : []),
-        ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts"
+        ...(role === "admin" || role === "super_admin" || role === "management" || role === "accounts" || role === "manager" || role === "crm"
           ? [{ to: "/visit-proofs" as const, label: "Site Visit Proofs", icon: MapPinned }]
           : []),
       ],

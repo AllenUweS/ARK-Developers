@@ -94,7 +94,7 @@ import {
   FileCheck,
   Printer,
 } from "lucide-react";
-import { syncBookingToTally, syncPaymentToTally, syncCustomerLedgerUnified } from "@/lib/tallySync";
+import { syncCustomerLedgerUnified } from "@/lib/tallySync";
 import { sendBookingConfirmationWhatsApp } from "@/lib/whatsappService";
 import { CustomerTallyLedgerModal } from "@/components/analytics/CustomerTallyLedgerModal";
 import { BookingPrintForm } from "@/components/bookings/BookingPrintForm";
@@ -243,12 +243,62 @@ function BookingsPage() {
             .from("plots")
             .update({ status: "available", selected_lead_id: null } as any)
             .eq("id", plotId);
+
+          // Mark associated lead as dropped
+          try {
+            const { data: bkg } = await (supabase as any)
+              .from("bookings")
+              .select("lead_id, customer_phone, customer_name")
+              .eq("id", id)
+              .maybeSingle();
+
+            let targetLeadId = bkg?.lead_id;
+            if (!targetLeadId && (bkg?.customer_phone || bkg?.customer_name)) {
+              const { data: matched } = await (supabase as any)
+                .from("plot_leads")
+                .select("id")
+                .or(`phone.eq.${bkg?.customer_phone || ""},name.eq.${bkg?.customer_name || ""}`)
+                .maybeSingle();
+              if (matched) targetLeadId = matched.id;
+            }
+            if (!targetLeadId && plotId) {
+              const { data: matched } = await (supabase as any)
+                .from("plot_leads")
+                .select("id")
+                .eq("plot_id", plotId)
+                .maybeSingle();
+              if (matched) targetLeadId = matched.id;
+            }
+
+            if (targetLeadId) {
+              await (supabase as any)
+                .from("plot_leads")
+                .update({ status: "dropped", plot_id: null })
+                .eq("id", targetLeadId);
+
+              await (supabase as any).from("lead_activities").insert({
+                lead_id: targetLeadId,
+                activity_type: "lead_dropped",
+                from_status: "converted",
+                to_status: "dropped",
+                performed_by: user.id,
+                notes: `🚫 Lead Dropped — Booking marked as ${status.toUpperCase()}`,
+                metadata: { drop_reason: `booking_${status}`, booking_id: id },
+              });
+            }
+          } catch (e) {
+            console.warn("Could not mark lead as dropped on booking update:", e);
+          }
         }
       }
     },
     onSuccess: () => {
       toast.success("Booking status updated successfully");
       qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+      qc.invalidateQueries({ queryKey: ["plot-leads"] });
+      qc.invalidateQueries({ queryKey: ["plots"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -300,6 +350,13 @@ function BookingsPage() {
           .eq("id", bookingToDelete.plot_id);
       }
 
+      if (bookingToDelete.lead_id) {
+        await (supabase as any)
+          .from("plot_leads")
+          .update({ status: "dropped", plot_id: null })
+          .eq("id", bookingToDelete.lead_id);
+      }
+
       return { success: true, count: deletedRows?.length };
     },
     onSuccess: () => {
@@ -309,6 +366,8 @@ function BookingsPage() {
       qc.invalidateQueries({ queryKey: ["bookings"] });
       qc.invalidateQueries({ queryKey: ["plots"] });
       qc.invalidateQueries({ queryKey: ["all-plots"] });
+      qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+      qc.invalidateQueries({ queryKey: ["plot-leads"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       qc.invalidateQueries({ queryKey: ["project-stats"] });
     },

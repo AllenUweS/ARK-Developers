@@ -14,7 +14,7 @@ import {
   MessageCircle,
   Zap,
 } from "lucide-react";
-import { downloadEMIStatementPDF, uploadEMIStatementPDFToStorage } from "@/lib/emiStatementPDF";
+import { downloadEMIStatementPDF, uploadEMIStatementPDFToStorage, generateEMIStatementPDFBlob } from "@/lib/emiStatementPDF";
 import { sendEMIStatementWhatsApp } from "@/lib/whatsappService";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -69,6 +69,13 @@ export function EMIScheduleGeneratorDialog({
 
   const totalPrice = Number(booking?.total_price || 0);
   const advancePaid = Number(booking?.advance_paid || 0);
+
+  const isUnapproved = Boolean(
+    booking &&
+    booking.approval_stage !== "completed" &&
+    booking.status !== "approved" &&
+    booking.status !== "sold"
+  );
 
   // Fetch recorded payments for this booking to know exact funds collected
   const { data: payments = [] } = useQuery({
@@ -296,6 +303,11 @@ export function EMIScheduleGeneratorDialog({
   const saveScheduleMutation = useMutation({
     mutationFn: async () => {
       if (!booking?.id) throw new Error("No booking selected");
+      if (isUnapproved) {
+        throw new Error(
+          "Approval Required: Cannot modify EMI schedule for an unapproved booking. The definitive schedule will be activated automatically once the Accounts department confirms final approval and the plot is booked."
+        );
+      }
       if (rows.length === 0) throw new Error("Cannot save empty schedule");
 
       if (totalScheduled > totalPrice) {
@@ -371,6 +383,7 @@ export function EMIScheduleGeneratorDialog({
       firstDueDate: startDate,
       bookingDate: booking?.booking_date || booking?.created_at,
       scheduleRows: rows,
+      recordedPayments: payments,
     });
     toast.success("Generated EMI Statement PDF for download!");
   };
@@ -382,7 +395,7 @@ export function EMIScheduleGeneratorDialog({
     setSendingWhatsAppPDF(true);
     const toastId = toast.loading(`Generating PDF & dispatching WhatsApp statement for ${booking.customer_name}...`);
     try {
-      const pdfUrl = await uploadEMIStatementPDFToStorage({
+      const statementData = {
         customerName: booking.customer_name || "Customer",
         customerPhone: booking.customer_phone || undefined,
         customerAddress: booking.customer_address || undefined,
@@ -395,8 +408,13 @@ export function EMIScheduleGeneratorDialog({
         remainingBalance: Math.max(0, totalPrice - advancePaid),
         installmentCount: monthsCount,
         firstDueDate: startDate,
+        bookingDate: booking?.booking_date || booking?.created_at,
         scheduleRows: rows,
-      });
+        recordedPayments: payments,
+      };
+
+      // Generate the exact same high-quality PDF statement
+      const pdfBlob = await generateEMIStatementPDFBlob(statementData);
 
       const totalCount = monthsCount || 12;
       const realizedCount = rows.filter((r) => String(r.status).toLowerCase() === "paid").length;
@@ -413,7 +431,7 @@ export function EMIScheduleGeneratorDialog({
         pendingInstallmentsText: `${Math.max(totalCount - realizedCount, 0)} EMIs remaining`,
         nextDueDate: startDate || new Date().toISOString().slice(0, 10),
         nextDueAmount: rows.find((r) => String(r.status).toLowerCase() !== "paid")?.amount || 0,
-        pdfDocumentUrl: pdfUrl || undefined,
+        pdfBlob,
         pdfFileName: `EMI_Statement_Plot_${booking.plots?.plot_number || "Mapped"}.pdf`,
       });
 
@@ -423,7 +441,7 @@ export function EMIScheduleGeneratorDialog({
       } else {
         const isAuthErr = res.message?.includes("190") || res.message?.includes("Authentication");
         const displayMsg = isAuthErr
-          ? "WhatsApp Meta Token Expired on deployed build. Re-deploying latest token to Vercel..."
+          ? "WhatsApp Meta Token Expired on deployed build. Please test on Localhost or refresh after deploy."
           : res.message || "Failed to send WhatsApp PDF Statement";
 
         toast.error(`WhatsApp API Error: ${displayMsg}`, {
@@ -484,6 +502,19 @@ export function EMIScheduleGeneratorDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Read-Only Pipeline Banner */}
+          {isUnapproved && (
+            <div className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs shadow-2xs">
+              <Lock className="size-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-bold">Read-Only Pipeline Preview</p>
+                <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
+                  This booking is currently undergoing multi-department approval. The definitive EMI installment schedule will be automatically generated and activated once the Accounts department confirms final approval and the plot status transitions to Booked.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Summary Cards Row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-2xl border bg-card/60 space-y-1">
@@ -853,15 +884,27 @@ export function EMIScheduleGeneratorDialog({
             <Button
               size="sm"
               onClick={() => saveScheduleMutation.mutate()}
-              disabled={saveScheduleMutation.isPending || rows.length === 0 || isOverScheduled}
+              disabled={isUnapproved || saveScheduleMutation.isPending || rows.length === 0 || isOverScheduled}
               className={`font-extrabold text-xs gap-1.5 shadow-sm rounded-xl transition-all ${
-                isOverScheduled
-                  ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30 cursor-not-allowed opacity-90"
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                isUnapproved
+                  ? "bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-80"
+                  : isOverScheduled
+                    ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30 cursor-not-allowed opacity-90"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
               }`}
-              title={isOverScheduled ? "Cannot save: Total scheduled amount exceeds agreement deal price" : ""}
+              title={
+                isUnapproved
+                  ? "Cannot save: Multi-department approval is required before activating schedule"
+                  : isOverScheduled
+                    ? "Cannot save: Total scheduled amount exceeds agreement deal price"
+                    : ""
+              }
             >
-              {isOverScheduled ? (
+              {isUnapproved ? (
+                <>
+                  <Lock className="h-4 w-4 text-amber-500" /> Approval Required to Save
+                </>
+              ) : isOverScheduled ? (
                 <>
                   <AlertCircle className="h-4 w-4 text-rose-600" /> Over-Allocated (Cannot Save)
                 </>

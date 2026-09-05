@@ -39,7 +39,11 @@ export const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputPro
       const stripped = rawInput.replace(/[^0-9.]/g, "");
       // Prevent multiple dots
       const parts = stripped.split(".");
-      const cleanString = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join("")}` : stripped;
+      let cleanString = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join("")}` : stripped;
+      // If user typed a number with a leading zero (e.g. "07" when typing over "0"), normalize to "7"
+      if (cleanString.length > 1 && cleanString.startsWith("0") && !cleanString.startsWith("0.")) {
+        cleanString = cleanString.replace(/^0+/, "") || "0";
+      }
       onChange(cleanString);
     };
 

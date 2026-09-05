@@ -27,6 +27,8 @@ export interface EMIStatementWhatsAppPayload {
   nextDueDate?: string; // e.g. "10 Sep 2026"
   nextDueAmount: number;
   pdfDocumentUrl?: string;
+  pdfBlob?: Blob;
+  mediaId?: string;
   pdfFileName?: string;
 }
 
@@ -129,7 +131,7 @@ export function getEMISatementWhatsAppDeepLink(payload: EMIStatementWhatsAppPayl
   return `https://wa.me/${phoneWithCode}?text=${encodeURIComponent(messageText)}`;
 }
 
-const HARDCODED_ACCESS_TOKEN = "EAAONO18mvZBYBSdbjyzCWXo1QQu2BbAsWKxfyVzYbprm4nMUaRiDLUP96o8y9pXga2VB8zjwI7ZAsmKTRZA6xzIYgnz9AHu7uiemjvdhksWrY5tG7HT3YrWyXRuoOw9TmR07YU7joQ3ZBUJ2vb9p7yZCLfKUXLq3v5KfM7rwmGZCZB959s3NkYoUgBSZBFtrDrYjRqDyhbZBjdGQHwEaPZCeEacZAYjDzp2h6rvzkKsSOLGbZAgn10lp84Y2SzuHb7DlCLYZBlPZBenmuZBjaCQ5GZAxjowRNATs";
+const HARDCODED_ACCESS_TOKEN = "EAAONO18mvZBYBSTIFG5gDVRKk1bqwGMhtZBqsbq8EibymSZBP2DUUyaSZClnQ1iYAZCfONHZAMt3QuhDS7YWPGckDALwHr2ZAJ9M16QmJnuzyw6bgpSw7UtefXFIxU7aUAmc7X9v8ULsCspZA7HPXAMYzityHFVGijdZAhfpRUod3ZC4KhcUZBuAxaaG0960jvAdNQC3sYPXkADZAcQeAxknU3ZCRZCi2927GbuXE2bYmwSDlayvsOqS6ZBE90lhFZArOA08bCf6TR0YeVDOzefv42HXcDKJaDRprZCEZD";
 const HARDCODED_PHONE_NUMBER_ID = "1126770290524197";
 const HARDCODED_BOOKING_TEMPLATE_NAME = "plot_booking_confirmation";
 const HARDCODED_EMI_TEMPLATE_NAME = "customer_emi_statement_v2";
@@ -235,6 +237,40 @@ export async function sendBookingConfirmationWhatsApp(
 /**
  * Automated API Trigger for SBI-Style EMI Statement WhatsApp Dispatch.
  */
+export async function uploadMediaToMetaWhatsApp(
+  blob: Blob,
+  fileName = "EMI_Statement.pdf",
+  accessToken = HARDCODED_ACCESS_TOKEN,
+  phoneNumberId = HARDCODED_PHONE_NUMBER_ID
+): Promise<string | null> {
+  try {
+    const form = new FormData();
+    form.append("file", blob, fileName);
+    form.append("type", "application/pdf");
+    form.append("messaging_product", "whatsapp");
+
+    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/media`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn("[Meta Media Upload Error]", res.status, errText);
+      return null;
+    }
+
+    const data = await res.json();
+    return data.id || null;
+  } catch (e) {
+    console.warn("[Meta Media Upload Exception]", e);
+    return null;
+  }
+}
+
 export async function sendEMIStatementWhatsApp(
   payload: EMIStatementWhatsAppPayload,
   config?: {
@@ -258,32 +294,38 @@ export async function sendEMIStatementWhatsApp(
     };
   }
 
-  if (!payload.pdfDocumentUrl) {
-    console.warn("[WhatsApp EMI API] pdfDocumentUrl is empty. Template requires a DOCUMENT header. Falling back to 1-tap deep link.");
-    return {
-      success: false,
-      mode: "deeplink",
-      deepLink,
-      message: "PDF statement URL was not generated. Created 1-tap WhatsApp link with statement summary.",
-    };
+  // Upload PDF blob directly to Meta WhatsApp Media API if available!
+  let mediaId = payload.mediaId;
+  if (!mediaId && payload.pdfBlob) {
+    console.log("[WhatsApp EMI API] Uploading generated statement PDF directly to Meta Media API...");
+    mediaId = (await uploadMediaToMetaWhatsApp(
+      payload.pdfBlob,
+      payload.pdfFileName || "EMI_Statement.pdf",
+      accessToken,
+      phoneNumberId
+    )) || undefined;
+    if (mediaId) {
+      console.log("[WhatsApp EMI API] Meta Media Upload Success, ID:", mediaId);
+    }
   }
 
   const phoneWithCode = formatWhatsAppPhone(payload.customerPhone);
   const preferredLang = import.meta.env.VITE_WHATSAPP_LANGUAGE_CODE || "en";
 
-  async function postTemplate(langCode: string) {
-    const pdfUrl = payload.pdfDocumentUrl || "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+  const documentParam: any = mediaId
+    ? { id: mediaId, filename: payload.pdfFileName || "EMI_Statement.pdf" }
+    : payload.pdfDocumentUrl
+    ? { link: payload.pdfDocumentUrl, filename: payload.pdfFileName || "EMI_Statement.pdf" }
+    : { link: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf", filename: payload.pdfFileName || "EMI_Statement.pdf" };
 
+  async function postTemplate(langCode: string) {
     const components: any[] = [
       {
         type: "header",
         parameters: [
           {
             type: "document",
-            document: {
-              link: pdfUrl,
-              filename: payload.pdfFileName || "EMI_Statement.pdf",
-            },
+            document: documentParam,
           },
         ],
       },
@@ -304,7 +346,7 @@ export async function sendEMIStatementWhatsApp(
     ];
 
     return fetch(
-      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
@@ -326,10 +368,9 @@ export async function sendEMIStatementWhatsApp(
   }
 
   async function postDirectDocument() {
-    if (!payload.pdfDocumentUrl) return null;
     try {
       const res = await fetch(
-        `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+        `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
         {
           method: "POST",
           headers: {
@@ -341,8 +382,7 @@ export async function sendEMIStatementWhatsApp(
             to: phoneWithCode,
             type: "document",
             document: {
-              link: payload.pdfDocumentUrl,
-              filename: payload.pdfFileName || "EMI_Statement.pdf",
+              ...documentParam,
               caption: `📄 Official EMI Statement PDF for ${payload.customerName} (${payload.unitProjectDetails})\n💰 Contract Value: ${formatMoney(payload.totalContractPrice)}\n✅ Received: ${formatMoney(payload.totalAmountRealized)}\n⏳ Remaining Balance: ${formatMoney(payload.remainingBalance)}`,
             },
           }),
@@ -375,14 +415,14 @@ export async function sendEMIStatementWhatsApp(
       };
     }
 
-    if (docTemplateResult.error?.code === 132012 || docTemplateResult.error?.message?.includes("Format mismatch")) {
-      console.log("[WhatsApp EMI API] Template header format error. Attempting Direct PDF Document Message...");
+    if (!docTemplateResp.ok) {
+      console.log("[WhatsApp EMI API] Template message error:", docTemplateResult.error?.message, "Attempting direct PDF document message...");
       const directOk = await postDirectDocument();
       if (directOk) {
         return {
           success: true,
           mode: "api",
-          message: `Single PDF Statement document successfully sent to ${phoneWithCode} via WhatsApp!`,
+          message: `Official Statement PDF document successfully sent to ${phoneWithCode} via WhatsApp!`,
         };
       }
     }

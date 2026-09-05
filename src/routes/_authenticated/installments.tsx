@@ -44,10 +44,9 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { CustomerTallyLedgerModal } from "@/components/analytics/CustomerTallyLedgerModal";
 import { EMIScheduleGeneratorDialog } from "@/components/installments/EMIScheduleGeneratorDialog";
-import { downloadEMIStatementPDF, uploadEMIStatementPDFToStorage } from "@/lib/emiStatementPDF";
+import { downloadEMIStatementPDF, uploadEMIStatementPDFToStorage, generateEMIStatementPDFBlob } from "@/lib/emiStatementPDF";
 import { sendEMIStatementWhatsApp } from "@/lib/whatsappService";
 import { reconcileScheduleRows } from "@/lib/emiReconciliation";
-import { syncPaymentToTally, markPaymentSyncedToTally } from "@/lib/tallySync";
 import { PaymentReferenceInput, validatePaymentReference } from "@/components/ui/payment-reference-input";
 import { Button } from "@/components/ui/button";
 import {
@@ -93,6 +92,18 @@ const money = (value: number) =>
 const localDate = (value: string) => {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
+};
+
+const APPROVAL_STAGES = [
+  { id: "sales_head_approval", label: "Sales Head Review", shortLabel: "Sales Head", step: 1 },
+  { id: "admin_approval", label: "Admin Pricing Approval", shortLabel: "Admin", step: 2 },
+  { id: "crm_verification", label: "CRM Document Verification", shortLabel: "CRM", step: 3 },
+  { id: "accounts_payment", label: "Accounts Payment & EMI", shortLabel: "Accounts", step: 4 },
+  { id: "completed", label: "Plot Booked Globally", shortLabel: "Booked", step: 5 },
+];
+
+const isBookingApproved = (b: any) => {
+  return b?.approval_stage === "completed" || b?.status === "approved" || b?.status === "sold";
 };
 
 function paymentHealth(booking: any, ledger: any[], schedules: any[]) {
@@ -225,7 +236,7 @@ function InstallmentsPage() {
   });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<
-    "all" | "overdue" | "on_track" | "fully_paid" | "schedule_needed"
+    "all" | "overdue" | "on_track" | "fully_paid" | "schedule_needed" | "pipeline"
   >("all");
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("largest_balance");
@@ -281,6 +292,7 @@ function InstallmentsPage() {
   const [selectedScheduleBooking, setSelectedScheduleBooking] = useState<any | null>(null);
 
   const [scheduleGateAlertBooking, setScheduleGateAlertBooking] = useState<any | null>(null);
+  const [approvalGateModalBooking, setApprovalGateModalBooking] = useState<any | null>(null);
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
 
   const handleCopyPhone = (id: string, phone: string, e: React.MouseEvent) => {
@@ -363,10 +375,37 @@ function InstallmentsPage() {
     return Array.from(unique.values());
   }, [bookings]);
 
+  // Partition bookings: Confirmed Booked/Approved vs In Multi-Stage Approval Pipeline
+  const { approvedBookings, pendingApprovalBookings } = useMemo(() => {
+    const approved: any[] = [];
+    const pipeline: any[] = [];
+    bookings.forEach((b: any) => {
+      if (b.status === "rejected" || b.status === "cancelled") return;
+      if (isBookingApproved(b)) {
+        approved.push(b);
+      } else {
+        pipeline.push(b);
+      }
+    });
+    return { approvedBookings: approved, pendingApprovalBookings: pipeline };
+  }, [bookings]);
+
+  const pipelineTotalValue = useMemo(() => {
+    return pendingApprovalBookings.reduce((sum, b) => sum + Number(b.total_price || 0), 0);
+  }, [pendingApprovalBookings]);
+
   // Payment Recording Mutation (With Strict FIFO Sequencing & Auto-Rebalancing)
   const recordPayment = useMutation({
     mutationFn: async () => {
       if (!activeBooking) return;
+
+      // 🛡️ AIRLOCK HARD CONSTRAINT: Multi-stage approval must be completed
+      if (!isBookingApproved(activeBooking)) {
+        throw new Error(
+          "Approval Required: Cannot collect installments for this deal. The booking is currently in the approval pipeline. Installments can only be collected once the Accounts department approves and the plot is officially booked."
+        );
+      }
+
       const amountNum = Number(payment.amount);
       if (isNaN(amountNum) || amountNum <= 0) throw new Error("Please enter a valid payment amount");
 
@@ -653,7 +692,7 @@ function InstallmentsPage() {
   const autoReconcileAllBookings = useMutation({
     mutationFn: async () => {
       let count = 0;
-      for (const b of bookings) {
+      for (const b of approvedBookings) {
         const bSchedules = schedulesByBooking.get(b.id) ?? [];
         const bPayments = paymentsByBooking.get(b.id) ?? [];
         if (bSchedules.length > 0 || bPayments.length > 0) {
@@ -706,6 +745,12 @@ function InstallmentsPage() {
 
   // Gated payment trigger with Strict FIFO initialization
   const handleOpenRecordPayment = (booking: any) => {
+    // 🛡️ AIRLOCK GUARD: Block payment recording if deal is still pending approval
+    if (!isBookingApproved(booking)) {
+      setApprovalGateModalBooking(booking);
+      return;
+    }
+
     const bookingSchs = schedulesByBooking.get(booking.id) ?? [];
 
     // CONSTRAINT CHECK: If schedule does NOT exist, open constraint prompt
@@ -743,14 +788,14 @@ function InstallmentsPage() {
     }
   };
 
-  // Overall Financial Aggregates
+  // Overall Financial Aggregates (Strictly from confirmed booked deals)
   const metrics = useMemo(() => {
     let collected = 0;
     let target = 0;
     let outstandingVal = 0;
     let overdueVal = 0;
 
-    bookings.forEach((b: any) => {
+    approvedBookings.forEach((b: any) => {
       const ledger = paymentsByBooking.get(b.id) ?? [];
       const schs = schedulesByBooking.get(b.id) ?? [];
       const health = paymentHealth(b, ledger, schs);
@@ -770,16 +815,18 @@ function InstallmentsPage() {
       overdue: overdueVal,
       realizationPct,
     };
-  }, [bookings, paymentsByBooking, schedulesByBooking]);
+  }, [approvedBookings, paymentsByBooking, schedulesByBooking]);
 
-  const scheduledPlansCount = bookings.filter(
+  const scheduledPlansCount = approvedBookings.filter(
     (b: any) => (schedulesByBooking.get(b.id) ?? []).length > 0,
   ).length;
-  const unscheduledPlansCount = bookings.length - scheduledPlansCount;
+  const unscheduledPlansCount = approvedBookings.length - scheduledPlansCount;
 
   // Filtered Bookings List
   const filteredBookings = useMemo(() => {
-    return bookings
+    const sourceList = filter === "pipeline" ? pendingApprovalBookings : approvedBookings;
+
+    return sourceList
       .filter((booking: any) => {
         const schs = schedulesByBooking.get(booking.id) ?? [];
         const ledger = paymentsByBooking.get(booking.id) ?? [];
@@ -794,19 +841,23 @@ function InstallmentsPage() {
         }
 
         // Status Filter
-        const matchesFilter =
-          filter === "all" ||
-          (filter === "overdue" && health.overdue > 0 && !isFullyPaid) ||
-          (filter === "on_track" &&
-            health.status === "on_track" &&
-            health.overdue <= 0 &&
-            !isFullyPaid) ||
-          (filter === "fully_paid" && isFullyPaid) ||
-          (filter === "schedule_needed" && !health.scheduled && !isFullyPaid);
+        if (filter !== "pipeline") {
+          const matchesFilter =
+            filter === "all" ||
+            (filter === "overdue" && health.overdue > 0 && !isFullyPaid) ||
+            (filter === "on_track" &&
+              health.status === "on_track" &&
+              health.overdue <= 0 &&
+              !isFullyPaid) ||
+            (filter === "fully_paid" && isFullyPaid) ||
+            (filter === "schedule_needed" && !health.scheduled && !isFullyPaid);
+
+          if (!matchesFilter) return false;
+        }
 
         // Search Query
         const terms = `${booking.customer_name} ${booking.customer_phone} ${booking.plots?.projects?.name ?? ""} ${booking.plots?.plot_number ?? ""} ${booking.plots?.projects?.code ?? ""}`.toLowerCase();
-        return matchesFilter && terms.includes(search.trim().toLowerCase());
+        return terms.includes(search.trim().toLowerCase());
       })
       .sort((a: any, b: any) => {
         const remA = Math.max(0, Number(a.total_price || 0) - Number(a.advance_paid || 0));
@@ -823,7 +874,7 @@ function InstallmentsPage() {
         if (sortBy === "name_asc") return (a.customer_name || "").localeCompare(b.customer_name || "");
         return 0;
       });
-  }, [bookings, filter, search, selectedProject, sortBy, schedulesByBooking, paymentsByBooking]);
+  }, [approvedBookings, pendingApprovalBookings, filter, search, selectedProject, sortBy, schedulesByBooking, paymentsByBooking]);
 
   const activeRemaining = activeBooking
     ? Math.max(Number(activeBooking.total_price) - Number(activeBooking.advance_paid), 0)
@@ -843,7 +894,7 @@ function InstallmentsPage() {
       const plotNo = String(booking.plots?.plot_number || "101");
       const pendingDues = Math.max(0, totalPrice - advancePaid);
 
-      const pdfUrl = await uploadEMIStatementPDFToStorage({
+      const statementData = {
         customerName: booking.customer_name || "Customer",
         customerPhone: booking.customer_phone || undefined,
         customerAddress: booking.customer_address || undefined,
@@ -859,7 +910,9 @@ function InstallmentsPage() {
         installmentCount: schs.length || totalCount,
         scheduleRows: schs,
         recordedPayments: ledger,
-      });
+      };
+
+      const pdfBlob = await generateEMIStatementPDFBlob(statementData);
 
       const dueDateStr =
         health.nextDue instanceof Date
@@ -883,7 +936,7 @@ function InstallmentsPage() {
         pendingInstallmentsText: `${Math.max(totalCount - realizedCount, 0)} EMIs remaining`,
         nextDueDate: dueDateStr,
         nextDueAmount: dueAmountVal,
-        pdfDocumentUrl: pdfUrl || undefined,
+        pdfBlob,
         pdfFileName: `EMI_Statement_Plot_${plotNo}.pdf`,
       });
 
@@ -1004,6 +1057,17 @@ function InstallmentsPage() {
                   </span>
                   FIFO Sequential Protocol Active
                 </span>
+
+                {pendingApprovalBookings.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFilter("pipeline")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25 hover:bg-amber-500/20 transition-all cursor-pointer shadow-2xs"
+                  >
+                    <Lock className="size-3 text-amber-600 dark:text-amber-400" />
+                    <span>{pendingApprovalBookings.length} Deals in Approval Pipeline ({money(pipelineTotalValue)}) · Collection Locked</span>
+                  </button>
+                )}
               </div>
 
               <div>
@@ -1021,9 +1085,9 @@ function InstallmentsPage() {
               <Button
                 size="sm"
                 onClick={() => {
-                  const activeTarget = bookings.find((b: any) => Number(b.total_price) - Number(b.advance_paid) > 0) || bookings[0];
+                  const activeTarget = approvedBookings.find((b: any) => Number(b.total_price) - Number(b.advance_paid) > 0) || approvedBookings[0];
                   if (activeTarget) handleOpenRecordPayment(activeTarget);
-                  else toast.info("No active customer deals available for payment recording.");
+                  else toast.info("No active approved customer deals available for payment recording.");
                 }}
                 className="h-9 px-4 text-xs font-extrabold gap-1.5 rounded-xl bg-terracotta hover:bg-terracotta/90 text-white shadow-xs transition-all hover:scale-101 active:scale-95"
               >
@@ -1161,7 +1225,7 @@ function InstallmentsPage() {
               <div className="text-3xl font-extrabold text-foreground tracking-tight">
                 {scheduledPlansCount}{" "}
                 <span className="text-sm font-semibold text-muted-foreground">
-                  / {bookings.length} Plans
+                  / {approvedBookings.length} Active Plans
                 </span>
               </div>
               <div className="text-xs font-semibold mt-2 flex items-center justify-between">
@@ -1175,7 +1239,7 @@ function InstallmentsPage() {
                   </span>
                 )}
                 <span className="text-[11px] text-muted-foreground">
-                  {((scheduledPlansCount / (bookings.length || 1)) * 100).toFixed(0)}%
+                  {((scheduledPlansCount / (approvedBookings.length || 1)) * 100).toFixed(0)}%
                 </span>
               </div>
             </div>
@@ -1263,11 +1327,11 @@ function InstallmentsPage() {
           {/* Status Tabs Pill Row */}
           <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-border/60 scrollbar-none">
             {[
-              { id: "all", label: "All Plans", count: bookings.length },
+              { id: "all", label: "All Active Plans", count: approvedBookings.length },
               {
                 id: "on_track",
                 label: "Scheduled & On Track",
-                count: bookings.filter((b: any) => {
+                count: approvedBookings.filter((b: any) => {
                   const schs = schedulesByBooking.get(b.id) ?? [];
                   const ledger = paymentsByBooking.get(b.id) ?? [];
                   const h = paymentHealth(b, ledger, schs);
@@ -1279,7 +1343,7 @@ function InstallmentsPage() {
               {
                 id: "overdue",
                 label: "Overdue Dues",
-                count: bookings.filter((b: any) => {
+                count: approvedBookings.filter((b: any) => {
                   const schs = schedulesByBooking.get(b.id) ?? [];
                   const ledger = paymentsByBooking.get(b.id) ?? [];
                   const isPaid = Number(b.total_price) - Number(b.advance_paid) <= 0;
@@ -1290,7 +1354,7 @@ function InstallmentsPage() {
               {
                 id: "schedule_needed",
                 label: "Needs Schedule Setup",
-                count: bookings.filter((b: any) => {
+                count: approvedBookings.filter((b: any) => {
                   const schs = schedulesByBooking.get(b.id) ?? [];
                   const isPaid = Number(b.total_price) - Number(b.advance_paid) <= 0;
                   return !isPaid && schs.length === 0;
@@ -1300,10 +1364,16 @@ function InstallmentsPage() {
               {
                 id: "fully_paid",
                 label: "Fully Settled",
-                count: bookings.filter(
+                count: approvedBookings.filter(
                   (b: any) => Number(b.advance_paid) >= Number(b.total_price),
                 ).length,
                 badgeColor: "bg-blue-500/20 text-blue-700 dark:text-blue-300",
+              },
+              {
+                id: "pipeline",
+                label: "🔒 In Approval Pipeline",
+                count: pendingApprovalBookings.length,
+                badgeColor: "bg-amber-500/25 text-amber-800 dark:text-amber-200 border border-amber-500/30",
               },
             ].map((tab) => {
               const isSelected = filter === tab.id;
@@ -1359,6 +1429,7 @@ function InstallmentsPage() {
         ) : (
           <div className="space-y-4">
             {filteredBookings.map((booking: any) => {
+              const isApproved = isBookingApproved(booking);
               const schs = schedulesByBooking.get(booking.id) ?? [];
               const ledger = paymentsByBooking.get(booking.id) ?? [];
               const paid = Number(booking.advance_paid);
@@ -1373,13 +1444,75 @@ function InstallmentsPage() {
                 <div
                   key={booking.id}
                   className={`rounded-3xl border bg-card p-5 sm:p-6 shadow-sm hover:shadow-lg transition-all duration-300 space-y-4 ${
-                    !hasSavedSchedule && !completed
-                      ? "border-amber-500/40 bg-amber-500/[0.02]"
-                      : health.overdue > 0
-                        ? "border-rose-500/30 bg-rose-500/[0.02]"
-                        : "border-border/80"
+                    !isApproved
+                      ? "border-amber-500/40 bg-gradient-to-r from-card via-card to-amber-500/[0.03]"
+                      : !hasSavedSchedule && !completed
+                        ? "border-amber-500/40 bg-amber-500/[0.02]"
+                        : health.overdue > 0
+                          ? "border-rose-500/30 bg-rose-500/[0.02]"
+                          : "border-border/80"
                   }`}
                 >
+                  {/* Pipeline Stage Alert & Stepper for Unapproved Deals */}
+                  {!isApproved && (
+                    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-3.5 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1.5 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                            <Lock className="size-4" />
+                          </span>
+                          <div>
+                            <span className="text-xs font-extrabold text-amber-900 dark:text-amber-200">
+                              Awaiting Multi-Department Approval · Plot Not Booked Yet
+                            </span>
+                            <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 block">
+                              Installment collections unlock once Accounts confirms approval and the plot is booked globally.
+                            </span>
+                          </div>
+                        </div>
+                        <Badge className="bg-amber-500/20 text-amber-900 dark:text-amber-200 border-amber-500/40 text-[11px] font-bold">
+                          Current Stage: {APPROVAL_STAGES.find(s => s.id === (booking.approval_stage || "sales_head_approval"))?.label || "Sales Head Review"}
+                        </Badge>
+                      </div>
+
+                      {/* 5-Stage Visual Stepper */}
+                      <div className="flex items-center justify-between gap-1 overflow-x-auto pt-1 scrollbar-none">
+                        {APPROVAL_STAGES.map((stg, sIdx) => {
+                          const currentStageId = booking.approval_stage || "sales_head_approval";
+                          const currentIdx = APPROVAL_STAGES.findIndex(s => s.id === currentStageId);
+                          const isDone = sIdx < currentIdx;
+                          const isCurrent = sIdx === currentIdx;
+
+                          return (
+                            <div key={stg.id} className="flex items-center gap-1 shrink-0">
+                              <div
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                                  isDone
+                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                                    : isCurrent
+                                      ? "bg-amber-500/25 text-amber-900 dark:text-amber-100 border border-amber-500/50 shadow-xs ring-2 ring-amber-500/30 animate-pulse"
+                                      : "bg-muted/60 text-muted-foreground/60 border border-border/40"
+                                }`}
+                              >
+                                {isDone ? (
+                                  <CheckCircle2 className="size-3 text-emerald-600" />
+                                ) : isCurrent ? (
+                                  <Clock className="size-3 text-amber-600 animate-spin" />
+                                ) : (
+                                  <Lock className="size-3 text-muted-foreground/40" />
+                                )}
+                                <span>{stg.step}. {stg.shortLabel}</span>
+                              </div>
+                              {sIdx < APPROVAL_STAGES.length - 1 && (
+                                <ChevronRight className="size-3 text-muted-foreground/40 shrink-0" />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Top Bar: Property, Customer, Schedule Health & Action Hub */}
                   <div className="grid gap-5 lg:grid-cols-[1.1fr_1.1fr_0.8fr_auto] lg:items-center">
                     {/* 1. Property & Customer Info */}
@@ -1476,58 +1609,87 @@ function InstallmentsPage() {
                     </div>
 
                     {/* 3. Schedule Health Card */}
-                    <div
-                      className={`rounded-2xl border p-3.5 flex flex-col justify-between shadow-2xs ${
-                        !hasSavedSchedule && !completed
-                          ? "border-amber-500/30 bg-amber-500/5"
-                          : health.overdue > 0
-                            ? "border-rose-500/30 bg-rose-500/5"
-                            : "border-emerald-500/20 bg-emerald-500/5"
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center gap-1.5 text-xs font-extrabold">
-                          {!hasSavedSchedule && !completed ? (
-                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                              <Sparkles className="size-3.5" /> EMI Schedule Required
-                            </span>
-                          ) : health.overdue > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400">
-                              <AlertTriangle className="size-3.5" /> {health.statusLabel}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                              <CheckCircle2 className="size-3.5" /> {completed ? "Fully Settled" : "Schedule Active"}
-                            </span>
-                          )}
+                    {!isApproved ? (
+                      <div className="rounded-2xl border p-3.5 flex flex-col justify-between shadow-2xs border-amber-500/30 bg-amber-500/5">
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs font-extrabold text-amber-700 dark:text-amber-300">
+                            <Lock className="size-3.5" /> Approval In Progress
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground leading-relaxed font-medium">
+                            Awaiting {APPROVAL_STAGES.find(s => s.id === (booking.approval_stage || "sales_head_approval"))?.shortLabel || "Sales Head"} review. Plot is not yet booked.
+                          </p>
                         </div>
-
-                        <p className="mt-1 text-xs text-muted-foreground leading-relaxed font-medium">
-                          {!hasSavedSchedule && !completed
-                            ? "Set up installment plan to enable payment recording."
-                            : health.subtext}
-                        </p>
-                      </div>
-
-                      {hasSavedSchedule && health.nextDue && !completed && (
                         <div className="pt-2 mt-2 border-t border-border/40 flex items-center justify-between text-xs">
                           <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-semibold">
-                            <CalendarDays className="size-3 text-terracotta" /> Next Due:
+                            <Clock className="size-3 text-amber-600" /> Active Stage:
                           </span>
                           <span className="font-extrabold text-foreground text-[11px]">
-                            {health.nextDue.toLocaleDateString("en-IN", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
+                            {APPROVAL_STAGES.find(s => s.id === (booking.approval_stage || "sales_head_approval"))?.shortLabel || "Sales Head"}
                           </span>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={`rounded-2xl border p-3.5 flex flex-col justify-between shadow-2xs ${
+                          !hasSavedSchedule && !completed
+                            ? "border-amber-500/30 bg-amber-500/5"
+                            : health.overdue > 0
+                              ? "border-rose-500/30 bg-rose-500/5"
+                              : "border-emerald-500/20 bg-emerald-500/5"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs font-extrabold">
+                            {!hasSavedSchedule && !completed ? (
+                              <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                                <Sparkles className="size-3.5" /> EMI Schedule Required
+                              </span>
+                            ) : health.overdue > 0 ? (
+                              <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                                <AlertTriangle className="size-3.5" /> {health.statusLabel}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 className="size-3.5" /> {completed ? "Fully Settled" : "Schedule Active"}
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-1 text-xs text-muted-foreground leading-relaxed font-medium">
+                            {!hasSavedSchedule && !completed
+                              ? "Set up installment plan to enable payment recording."
+                              : health.subtext}
+                          </p>
+                        </div>
+
+                        {hasSavedSchedule && health.nextDue && !completed && (
+                          <div className="pt-2 mt-2 border-t border-border/40 flex items-center justify-between text-xs">
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-semibold">
+                              <CalendarDays className="size-3 text-terracotta" /> Next Due:
+                            </span>
+                            <span className="font-extrabold text-foreground text-[11px]">
+                              {health.nextDue.toLocaleDateString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* 4. SYMMETRICAL 2-TIER ACTION HUB WITH CONSTRAINT ENFORCEMENT */}
                     <div className="flex flex-col gap-2 w-[220px]">
-                      {!completed && (
+                      {!isApproved ? (
+                        <Button
+                          disabled
+                          className="w-full h-8.5 text-xs font-extrabold gap-1.5 rounded-xl bg-muted/80 text-muted-foreground border border-border/80 cursor-not-allowed opacity-90 shadow-none"
+                        >
+                          <Lock className="size-3.5 text-amber-500" />
+                          Locked · In Pipeline
+                        </Button>
+                      ) : !completed && (
                         hasSavedSchedule ? (
                           /* SCHEDULE IS CONFIGURED -> UNLOCKED PRIMARY BUTTON */
                           <Button
@@ -1565,9 +1727,11 @@ function InstallmentsPage() {
                                 setScheduleModalOpen(true);
                               }}
                               className={`h-8 px-1.5 text-[11px] font-extrabold gap-1 rounded-xl shadow-2xs justify-center ${
-                                hasSavedSchedule
-                                  ? "border-terracotta/30 text-terracotta hover:bg-terracotta/10"
-                                  : "border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10"
+                                !isApproved
+                                  ? "border-border/80 text-muted-foreground hover:bg-muted"
+                                  : hasSavedSchedule
+                                    ? "border-terracotta/30 text-terracotta hover:bg-terracotta/10"
+                                    : "border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10"
                               }`}
                             >
                               <Calculator className="size-3.5" />
@@ -1575,7 +1739,7 @@ function InstallmentsPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Configure or preview EMI schedule breakdown</p>
+                            <p>{!isApproved ? "Preview draft EMI schedule breakdown" : "Configure or preview EMI schedule breakdown"}</p>
                           </TooltipContent>
                         </Tooltip>
 
@@ -1596,27 +1760,47 @@ function InstallmentsPage() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Open full Customer Tally Ledger & vouchers sheet</p>
+                            <p>Open Customer Tally Ledger statement</p>
                           </TooltipContent>
                         </Tooltip>
 
-                        {/* 3. WhatsApp Dispatcher */}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleWhatsAppEMIInstallments(booking, health, ledger)}
-                              className="h-8 px-1.5 text-[11px] font-extrabold gap-1 rounded-xl border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 shadow-2xs justify-center"
-                            >
-                              <MessageCircle className="size-3.5 text-emerald-600" />
-                              <span>Share</span>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Dispatch WhatsApp EMI Statement PDF</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        {/* 3. Action / WhatsApp Dispatcher */}
+                        {!isApproved ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Link to="/approvals" className="w-full">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full h-8 px-1.5 text-[11px] font-extrabold gap-1 rounded-xl border-terracotta/40 text-terracotta hover:bg-terracotta/10 shadow-2xs justify-center"
+                                >
+                                  <ArrowRight className="size-3.5" />
+                                  <span>Review</span>
+                                </Button>
+                              </Link>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Review deal in Approvals workspace</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleWhatsAppEMIInstallments(booking, health, ledger)}
+                                className="h-8 px-1.5 text-[11px] font-extrabold gap-1 rounded-xl border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 shadow-2xs justify-center"
+                              >
+                                <MessageCircle className="size-3.5 text-emerald-600" />
+                                <span>Share</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Dispatch WhatsApp EMI Statement PDF</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2066,6 +2250,70 @@ function InstallmentsPage() {
                 </div>
               );
             })()}
+          </DialogContent>
+        </Dialog>
+
+        {/* 🛡️ AIRLOCK GUARD MODAL: Booking Approval Required */}
+        <Dialog
+          open={!!approvalGateModalBooking}
+          onOpenChange={(open) => !open && setApprovalGateModalBooking(null)}
+        >
+          <DialogContent className="max-w-md rounded-3xl p-6">
+            <DialogHeader className="space-y-2">
+              <div className="size-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-1 border border-amber-500/30 shadow-xs">
+                <ShieldAlert className="size-6" />
+              </div>
+              <DialogTitle className="text-xl font-extrabold text-center tracking-tight text-foreground">
+                Installment Collection Locked
+              </DialogTitle>
+              <DialogDescription className="text-xs text-center text-muted-foreground leading-relaxed">
+                This deal has not completed multi-department approval yet.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 my-2">
+              <div className="p-3.5 rounded-2xl border border-border/80 bg-muted/30 space-y-2 text-xs font-mono">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground font-sans">Customer:</span>
+                  <span className="font-bold text-foreground font-sans">{approvalGateModalBooking?.customer_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground font-sans">Plot / Project:</span>
+                  <span className="font-bold text-foreground font-sans">
+                    Plot #{approvalGateModalBooking?.plots?.plot_number ?? "N/A"} ({approvalGateModalBooking?.plots?.projects?.name || "Project"})
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-border/40">
+                  <span className="text-muted-foreground font-sans">Current Stage:</span>
+                  <span className="inline-flex items-center gap-1 font-extrabold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[11px] font-sans">
+                    <Clock className="size-3" />
+                    {APPROVAL_STAGES.find(s => s.id === (approvalGateModalBooking?.approval_stage || "sales_head_approval"))?.label || "Sales Head Review"}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground leading-relaxed text-center px-1">
+                As per treasury policy, plots are only booked globally once the Accounts department approves the advance payment. Installment collection and schedule activation will automatically unlock once final approval is completed.
+              </p>
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setApprovalGateModalBooking(null)}
+                className="w-full sm:w-1/2 rounded-xl text-xs font-bold"
+              >
+                Close
+              </Button>
+              <Link to="/approvals" className="w-full sm:w-1/2">
+                <Button
+                  onClick={() => setApprovalGateModalBooking(null)}
+                  className="w-full rounded-xl text-xs font-extrabold bg-terracotta hover:bg-terracotta/90 text-white gap-1.5"
+                >
+                  Go to Approvals <ArrowRight className="size-3.5" />
+                </Button>
+              </Link>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 

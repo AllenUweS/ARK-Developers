@@ -29,6 +29,7 @@ import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authenticated/approvals'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedTreasuryTransferIdRouteImport } from './routes/_authenticated/treasury_.$transferId'
+import { Route as AuthenticatedSiteVisitsLeadIdRouteImport } from './routes/_authenticated/site-visits_.$leadId'
 import { Route as AuthenticatedProjectsIdRouteImport } from './routes/_authenticated/projects_.$id'
 import { Route as AuthenticatedPlotsPlotIdBookRouteImport } from './routes/_authenticated/plots.$plotId.book'
 import { Route as AuthenticatedPlotsPlotIdBookCheckoutRouteImport } from './routes/_authenticated/plots.$plotId.book.checkout'
@@ -138,6 +139,12 @@ const AuthenticatedTreasuryTransferIdRoute =
     path: '/treasury/$transferId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSiteVisitsLeadIdRoute =
+  AuthenticatedSiteVisitsLeadIdRouteImport.update({
+    id: '/site-visits_/$leadId',
+    path: '/site-visits/$leadId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedProjectsIdRoute = AuthenticatedProjectsIdRouteImport.update({
   id: '/projects_/$id',
   path: '/projects/$id',
@@ -176,6 +183,7 @@ export interface FileRoutesByFullPath {
   '/treasury': typeof AuthenticatedTreasuryRoute
   '/visit-proofs': typeof AuthenticatedVisitProofsRoute
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
+  '/site-visits/$leadId': typeof AuthenticatedSiteVisitsLeadIdRoute
   '/treasury/$transferId': typeof AuthenticatedTreasuryTransferIdRoute
   '/plots/$plotId/book': typeof AuthenticatedPlotsPlotIdBookRouteWithChildren
   '/plots/$plotId/book/checkout': typeof AuthenticatedPlotsPlotIdBookCheckoutRoute
@@ -200,6 +208,7 @@ export interface FileRoutesByTo {
   '/treasury': typeof AuthenticatedTreasuryRoute
   '/visit-proofs': typeof AuthenticatedVisitProofsRoute
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
+  '/site-visits/$leadId': typeof AuthenticatedSiteVisitsLeadIdRoute
   '/treasury/$transferId': typeof AuthenticatedTreasuryTransferIdRoute
   '/plots/$plotId/book': typeof AuthenticatedPlotsPlotIdBookRouteWithChildren
   '/plots/$plotId/book/checkout': typeof AuthenticatedPlotsPlotIdBookCheckoutRoute
@@ -226,6 +235,7 @@ export interface FileRoutesById {
   '/_authenticated/treasury': typeof AuthenticatedTreasuryRoute
   '/_authenticated/visit-proofs': typeof AuthenticatedVisitProofsRoute
   '/_authenticated/projects_/$id': typeof AuthenticatedProjectsIdRoute
+  '/_authenticated/site-visits_/$leadId': typeof AuthenticatedSiteVisitsLeadIdRoute
   '/_authenticated/treasury_/$transferId': typeof AuthenticatedTreasuryTransferIdRoute
   '/_authenticated/plots/$plotId/book': typeof AuthenticatedPlotsPlotIdBookRouteWithChildren
   '/_authenticated/plots/$plotId/book/checkout': typeof AuthenticatedPlotsPlotIdBookCheckoutRoute
@@ -252,6 +262,7 @@ export interface FileRouteTypes {
     | '/treasury'
     | '/visit-proofs'
     | '/projects/$id'
+    | '/site-visits/$leadId'
     | '/treasury/$transferId'
     | '/plots/$plotId/book'
     | '/plots/$plotId/book/checkout'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/treasury'
     | '/visit-proofs'
     | '/projects/$id'
+    | '/site-visits/$leadId'
     | '/treasury/$transferId'
     | '/plots/$plotId/book'
     | '/plots/$plotId/book/checkout'
@@ -301,6 +313,7 @@ export interface FileRouteTypes {
     | '/_authenticated/treasury'
     | '/_authenticated/visit-proofs'
     | '/_authenticated/projects_/$id'
+    | '/_authenticated/site-visits_/$leadId'
     | '/_authenticated/treasury_/$transferId'
     | '/_authenticated/plots/$plotId/book'
     | '/_authenticated/plots/$plotId/book/checkout'
@@ -454,6 +467,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTreasuryTransferIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/site-visits_/$leadId': {
+      id: '/_authenticated/site-visits_/$leadId'
+      path: '/site-visits/$leadId'
+      fullPath: '/site-visits/$leadId'
+      preLoaderRoute: typeof AuthenticatedSiteVisitsLeadIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/projects_/$id': {
       id: '/_authenticated/projects_/$id'
       path: '/projects/$id'
@@ -511,6 +531,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTreasuryRoute: typeof AuthenticatedTreasuryRoute
   AuthenticatedVisitProofsRoute: typeof AuthenticatedVisitProofsRoute
   AuthenticatedProjectsIdRoute: typeof AuthenticatedProjectsIdRoute
+  AuthenticatedSiteVisitsLeadIdRoute: typeof AuthenticatedSiteVisitsLeadIdRoute
   AuthenticatedTreasuryTransferIdRoute: typeof AuthenticatedTreasuryTransferIdRoute
   AuthenticatedPlotsPlotIdBookRoute: typeof AuthenticatedPlotsPlotIdBookRouteWithChildren
 }
@@ -533,6 +554,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTreasuryRoute: AuthenticatedTreasuryRoute,
   AuthenticatedVisitProofsRoute: AuthenticatedVisitProofsRoute,
   AuthenticatedProjectsIdRoute: AuthenticatedProjectsIdRoute,
+  AuthenticatedSiteVisitsLeadIdRoute: AuthenticatedSiteVisitsLeadIdRoute,
   AuthenticatedTreasuryTransferIdRoute: AuthenticatedTreasuryTransferIdRoute,
   AuthenticatedPlotsPlotIdBookRoute:
     AuthenticatedPlotsPlotIdBookRouteWithChildren,

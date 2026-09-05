@@ -855,16 +855,43 @@ function BookingCheckout() {
               </p>
             </Field>
 
-            <Field label="Incentive Allotted (₹)">
-              <Input
-                type="text"
-                value={form.incentive_amount !== "" ? formatINRInput(form.incentive_amount) : (calculatedIncentive ? formatINRInput(calculatedIncentive) : "")}
-                onChange={(e) => set("incentive_amount", e.target.value.replace(/[^0-9]/g, ""))}
-                placeholder="e.g. 50,000"
+            <Field
+              label={
+                <div className="flex items-center justify-between w-full">
+                  <span>Incentive Allotted (₹)</span>
+                  <div className="flex items-center gap-1.5 font-normal text-xs">
+                    {calculatedIncentive > 0 && form.incentive_amount !== String(Math.round(calculatedIncentive)) && (
+                      <button
+                        type="button"
+                        onClick={() => set("incentive_amount", String(Math.round(calculatedIncentive)))}
+                        className="text-[11px] text-primary hover:underline font-medium"
+                      >
+                        Default ({plot?.incentive_percentage}%: ₹{Math.round(calculatedIncentive).toLocaleString("en-IN")})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => set("incentive_amount", "0")}
+                      className={`text-[11px] px-2 py-0.5 rounded font-medium transition-colors ${
+                        form.incentive_amount === "0"
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                          : "bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {form.incentive_amount === "0" ? "✓ Set to ₹0 (No Incentive)" : "Set ₹0 (No Incentive)"}
+                    </button>
+                  </div>
+                </div>
+              }
+            >
+              <CurrencyInput
+                value={form.incentive_amount}
+                onChange={(val) => set("incentive_amount", val)}
+                placeholder={calculatedIncentive > 0 ? `Default: ₹${Math.round(calculatedIncentive).toLocaleString("en-IN")}` : "e.g. 0"}
                 className="font-medium text-emerald-700 dark:text-emerald-400"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Manager/Accountant allotted deal incentive amount.
+                Manager/Accountant allotted deal incentive amount. Click "Set ₹0" if no incentive applies to this deal.
               </p>
             </Field>
           </div>
@@ -1082,7 +1109,7 @@ function BookingCheckout() {
   );
 }
 
-function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
+function Field({ label, className, children }: { label: React.ReactNode; className?: string; children: React.ReactNode }) {
   return (
     <div className={className}>
       <Label className="text-xs text-muted-foreground">{label}</Label>

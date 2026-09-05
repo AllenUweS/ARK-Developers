@@ -172,12 +172,12 @@ export const LEAD_STATUS_PALETTE: Record<LeadStatus, { badge: string; dot: strin
   },
   converted: {
     badge:
-      "bg-plot-available/10 text-plot-available border-plot-available/30",
-    dot: "bg-plot-available",
+      "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400 font-semibold",
+    dot: "bg-emerald-500",
   },
   dropped: {
-    badge: "bg-muted text-muted-foreground border-border",
-    dot: "bg-muted-foreground",
+    badge: "bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400 font-semibold",
+    dot: "bg-red-500",
   },
 };
 

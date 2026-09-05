@@ -66,6 +66,7 @@ function ProjectDetail() {
   });
 
   const isAdmin = role === "admin" || role === "super_admin";
+  const canManageDocs = isAdmin || role === "manager" || role === "management" || role === "crm";
 
   const { data: project } = useQuery({
     queryKey: ["project", id, role],
@@ -159,33 +160,67 @@ function ProjectDetail() {
     }
   }
 
-  async function uploadDocuments(files: File[]) {
-    let count = 0;
-    for (const file of files) {
-      const path = `${id}/${Date.now()}-${file.name}`;
-      const { error: upErr } = await supabase.storage.from("project-documents").upload(path, file);
-      if (upErr) {
-        toast.error(`Failed to upload ${file.name}: ${upErr.message}`);
-        continue;
-      }
-      const { error } = await (supabase as any).from("project_documents").insert({
-        project_id: id,
-        name: file.name,
-        file_path: path,
-        file_type: file.type || null,
-        size_bytes: file.size,
-        uploaded_by: user.id,
-      });
-      if (!error) count++;
-    }
-    if (count > 0) {
-      toast.success(`Uploaded ${count} document${count > 1 ? "s" : ""}`);
-      qc.invalidateQueries({ queryKey: ["project-docs", id] });
-    }
-  }
-
   const [viewingDoc, setViewingDoc] = useState<any>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
+
+  async function uploadDocuments(files: File[]) {
+    if (!files.length) return;
+    setUploadingDocs(true);
+    let count = 0;
+    try {
+      for (const file of files) {
+        const safeName = file.name.replace(/[^\w\s.-]/gi, "_").replace(/\s+/g, "_");
+        const path = `${id}/${Date.now()}-${safeName}`;
+
+        let { error: upErr } = await supabase.storage.from("project-documents").upload(path, file);
+
+        // If bucket is not found, attempt auto-initialization via RPC and retry
+        if (upErr && upErr.message?.toLowerCase().includes("bucket not found")) {
+          try {
+            await (supabase as any).rpc("ensure_project_documents_bucket");
+            const retry = await supabase.storage.from("project-documents").upload(path, file);
+            upErr = retry.error;
+          } catch {
+            // ignore
+          }
+        }
+
+        if (upErr) {
+          if (upErr.message?.toLowerCase().includes("bucket not found")) {
+            toast.error(
+              `The "project-documents" storage bucket was not found. Please run the SQL migration "20260905004500_create_project_documents_bucket.sql" in your Supabase SQL Editor.`
+            );
+          } else {
+            toast.error(`Failed to upload ${file.name}: ${upErr.message}`);
+          }
+          continue;
+        }
+
+        const { error } = await (supabase as any).from("project_documents").insert({
+          project_id: id,
+          name: file.name,
+          file_path: path,
+          file_type: file.type || null,
+          size_bytes: file.size,
+          uploaded_by: user.id,
+        });
+
+        if (error) {
+          toast.error(`Failed to record ${file.name}: ${error.message}`);
+        } else {
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        toast.success(`Uploaded ${count} document${count > 1 ? "s" : ""}`);
+        qc.invalidateQueries({ queryKey: ["project-docs", id] });
+      }
+    } finally {
+      setUploadingDocs(false);
+    }
+  }
 
   async function deleteDocument(doc: any) {
     if (!confirm(`Delete "${doc.name}"?`)) return;
@@ -311,22 +346,38 @@ function ProjectDetail() {
               Approvals, brochures, legal documents, and other project files.
             </p>
           </div>
-          {isAdmin && (
+          {canManageDocs && (
             <label>
               <Button
                 asChild
-                className="bg-terracotta text-accent-foreground hover:bg-terracotta/90"
+                className="bg-terracotta text-white hover:bg-terracotta/90 cursor-pointer"
                 size="sm"
+                disabled={uploadingDocs}
               >
-                <span className="cursor-pointer">
-                  <Upload className="h-3 w-3 mr-1" /> Upload document
+                <span>
+                  {uploadingDocs ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="size-3 border-2 border-white/60 border-t-white rounded-full animate-spin" />
+                      Uploading…
+                    </span>
+                  ) : (
+                    <>
+                      <Upload className="h-3 w-3 mr-1" /> Upload document
+                    </>
+                  )}
                 </span>
               </Button>
               <input
                 type="file"
                 multiple
+                disabled={uploadingDocs}
                 className="hidden"
-                onChange={(e) => e.target.files?.length && uploadDocuments(Array.from(e.target.files))}
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    uploadDocuments(Array.from(e.target.files));
+                    e.target.value = "";
+                  }
+                }}
               />
             </label>
           )}
@@ -355,7 +406,7 @@ function ProjectDetail() {
                   <Button variant="ghost" size="sm" onClick={() => handleDocumentAction(doc, "download")} title="Download">
                     <Download className="h-4 w-4" />
                   </Button>
-                  {isAdmin && (
+                  {canManageDocs && (
                     <Button variant="ghost" size="sm" onClick={() => deleteDocument(doc)} title="Delete">
                       <Trash2 className="h-4 w-4 text-red-600" />
                     </Button>

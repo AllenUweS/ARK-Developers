@@ -364,10 +364,61 @@ function CancellationsWorkspace() {
         .eq("id", plotId);
 
       if (pErr) throw pErr;
+
+      // 4. Update associated Lead -> 'dropped' and release plot
+      try {
+        let leadToDropId = canc.bookings?.lead_id;
+
+        if (!leadToDropId && (canc.bookings?.customer_phone || canc.bookings?.customer_name)) {
+          const { data: matched } = await (supabase as any)
+            .from("plot_leads")
+            .select("id")
+            .or(`phone.eq.${canc.bookings?.customer_phone || ""},name.eq.${canc.bookings?.customer_name || ""}`)
+            .maybeSingle();
+          if (matched) leadToDropId = matched.id;
+        }
+
+        if (!leadToDropId && plotId) {
+          const { data: matched } = await (supabase as any)
+            .from("plot_leads")
+            .select("id")
+            .eq("plot_id", plotId)
+            .maybeSingle();
+          if (matched) leadToDropId = matched.id;
+        }
+
+        if (leadToDropId) {
+          await (supabase as any)
+            .from("plot_leads")
+            .update({ status: "dropped", plot_id: null })
+            .eq("id", leadToDropId);
+
+          await (supabase as any).from("lead_activities").insert({
+            lead_id: leadToDropId,
+            activity_type: "lead_dropped",
+            from_status: "converted",
+            to_status: "dropped",
+            performed_by: user?.id,
+            notes: `🚫 Lead Dropped — Site booking cancelled via Notice #3: ${remarks || "Default on installments / Plot released"}`,
+            metadata: { drop_reason: "booking_cancelled", cancellation_id: canc.id },
+          });
+
+          await (supabase as any).from("lead_drop_reasons").insert({
+            lead_id: leadToDropId,
+            dropped_from_stage: "converted",
+            reason: "booking_cancelled",
+            reason_label: "Booking Cancelled (Notice #3)",
+            notes: remarks || "Booking cancelled via Notice #3 finalization",
+            dropped_by: user?.id,
+          });
+        }
+      } catch (lErr) {
+        console.warn("Could not mark lead as dropped on Notice #3:", lErr);
+      }
     },
     onSuccess: () => {
       toast.success(
-        "🎉 Notice #3 Issued! Booking cancelled & Plot automatically reset to AVAILABLE globally!"
+        "🎉 Notice #3 Issued! Booking cancelled, Lead marked DROPPED & Plot reset to AVAILABLE!"
       );
       setConfirmNotice3Item(null);
       setNotice3RemarkInput("");
@@ -379,6 +430,9 @@ function CancellationsWorkspace() {
       qc.invalidateQueries({ queryKey: ["project-details"] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["all_plot_leads"] });
+      qc.invalidateQueries({ queryKey: ["plot-leads"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
     },
     onError: (err: any) => toast.error(err.message || "Failed to complete final notice"),
   });
@@ -1084,7 +1138,7 @@ Please contact our office at your earliest convenience to regularize your accoun
                     )}
 
                     {/* 2. Send WhatsApp Notice Button */}
-                    {!isRevoked && bkg.customer_phone && (
+                    {/* {!isRevoked && bkg.customer_phone && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -1094,7 +1148,7 @@ Please contact our office at your earliest convenience to regularize your accoun
                         <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
                         Send Notice #{c.notice_stage} via WhatsApp
                       </Button>
-                    )}
+                    )} */}
 
                     {/* 3. Advance to Notice #2 Action */}
                     {c.notice_stage === 1 && !isRevoked && (

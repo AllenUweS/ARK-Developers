@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { postToTallyServerFn, syncBookingToTally, syncPaymentToTally } from "@/lib/tallySync";
 import {
   sanitizePhoneInput,
   getPhoneValidationError,
@@ -84,6 +83,7 @@ interface BookingApprovalRow {
   created_at: string;
   remarks: string | null;
   plot_id: string;
+  lead_id?: string | null;
   sales_executive_id: string | null;
   created_by: string | null;
   plots?: {
@@ -502,6 +502,34 @@ export function ApprovalsWorkspace() {
         const { error: plotErr } = await supabase.from("plots").update({ status: "booked" }).eq("id", selectedBooking.plot_id);
         if (plotErr) console.error("Failed to update plot status:", plotErr);
 
+        // 💳 Auto-record advance payment in installment_payments ledger
+        if (finalAdv > 0) {
+          try {
+            const advMethod = accountsForm.paymentMethod || editForm.paymentMethod || "UPI";
+            const advRef = accountsForm.transactionRef || `ADV-${selectedBooking.id.slice(0, 8).toUpperCase()}`;
+            const advPayload: any = {
+              booking_id: selectedBooking.id,
+              amount: finalAdv,
+              paid_on: new Date().toISOString().slice(0, 10),
+              payment_method: advMethod,
+              reference_number: advRef,
+              bank_account_id: accountsForm.bankAccountId || null,
+              notes: "Booking Advance / Token Deposit (Approved by Accounts)",
+              created_by: user.id,
+            };
+            const { error: advErr } = await (supabase as any)
+              .from("installment_payments")
+              .insert(advPayload);
+            if (advErr) {
+              console.warn("Advance payment direct insert fallback:", advErr.message);
+              delete advPayload.bank_account_id;
+              await (supabase as any).from("installment_payments").insert(advPayload);
+            }
+          } catch (advPayErr) {
+            console.warn("Non-blocking advance payment record warning:", advPayErr);
+          }
+        }
+
         // Recalculate EMI Installment Schedule based on net balance (total_price - advance_paid)
         try {
           const finalBal = Math.max(0, finalTot - finalAdv);
@@ -535,50 +563,6 @@ export function ApprovalsWorkspace() {
         } catch (recalcErr) {
           console.warn("EMI recalculation warning:", recalcErr);
         }
-
-        // Attempt Tally Prime posting on Port 9000 (Sales Invoice + Receipt Voucher with selected Bank Ledger)
-        try {
-          const selectedBank = projectBankAccounts.find((b: any) => b.id === accountsForm.bankAccountId);
-          const prjName = (selectedBooking as any).plots?.projects?.name || "Project";
-          const prjCode = ((selectedBooking as any).plots?.projects?.code || "PRJ").toUpperCase();
-          const plotNo = String((selectedBooking as any).plots?.plot_number || "101");
-          const bkgRef = `BKG-${prjCode}-${plotNo}`;
-
-          // 1. Sync Sales Voucher
-          await syncBookingToTally({
-            customerName: editForm.customerName || selectedBooking.customer_name,
-            customerPhone: (editForm.customerPhone || selectedBooking.customer_phone) || undefined,
-            customerAddress: (editForm.customerAddress || selectedBooking.customer_address) || undefined,
-            plotNumber: plotNo,
-            projectName: prjName,
-            projectCode: prjCode,
-            totalPrice: finalTot,
-            bookingRef: bkgRef,
-          });
-
-          // 2. Sync Advance Payment Receipt Voucher
-          if (finalAdv > 0) {
-            await syncPaymentToTally({
-              customerName: editForm.customerName || selectedBooking.customer_name,
-              customerPhone: (editForm.customerPhone || selectedBooking.customer_phone) || undefined,
-              plotNumber: plotNo,
-              projectName: prjName,
-              projectCode: prjCode,
-              amount: finalAdv,
-              paymentMode: accountsForm.paymentMethod || editForm.paymentMethod,
-              paymentDate: new Date().toISOString().slice(0, 10),
-              paymentRef: accountsForm.transactionRef || `REC-${prjCode}-${plotNo}-ADV`,
-              bankName: selectedBank?.bank_name || undefined,
-              accountNumber: selectedBank?.account_number || undefined,
-              ifscCode: selectedBank?.ifsc_code || undefined,
-              bankLedger: selectedBank
-                ? `${selectedBank.bank_name} - ${selectedBank.account_number.slice(-4)}`
-                : undefined,
-            });
-          }
-        } catch (tallyErr) {
-          console.warn("Tally sync non-blocking error:", tallyErr);
-        }
       }
 
       // Send notifications
@@ -599,10 +583,13 @@ export function ApprovalsWorkspace() {
 
       toast.success(
         isFinalStep
-          ? "🎉 Payment Confirmed & Plot Booked Globally!"
+          ? "🎉 Payment Confirmed & Plot Booked Globally! Advance recorded & installments unlocked."
           : `Approved & Forwarded to ${STAGES.find((s) => s.id === nextStage)?.label}${changeLogs.length > 0 ? ` (${changeLogs.length} edits logged)` : ""}`
       );
 
+      qc.invalidateQueries({ queryKey: ["installment-bookings"] });
+      qc.invalidateQueries({ queryKey: ["installment-payments"] });
+      qc.invalidateQueries({ queryKey: ["all-booking-schedules"] });
       qc.invalidateQueries();
       setSelectedBooking(null);
       setActionModalType(null);
@@ -650,6 +637,57 @@ export function ApprovalsWorkspace() {
           .from("plots")
           .update({ status: "available", selected_lead_id: null })
           .eq("id", selectedBooking.plot_id);
+      }
+
+      // Update associated lead to 'dropped' and unlink from plot
+      try {
+        let leadToDropId = selectedBooking.lead_id;
+
+        if (!leadToDropId && (selectedBooking.customer_phone || selectedBooking.customer_name)) {
+          const { data: matched } = await (supabase as any)
+            .from("plot_leads")
+            .select("id")
+            .or(`phone.eq.${selectedBooking.customer_phone || ""},name.eq.${selectedBooking.customer_name || ""}`)
+            .maybeSingle();
+          if (matched) leadToDropId = matched.id;
+        }
+
+        if (!leadToDropId && selectedBooking.plot_id) {
+          const { data: matchedLead } = await (supabase as any)
+            .from("plot_leads")
+            .select("id")
+            .eq("plot_id", selectedBooking.plot_id)
+            .maybeSingle();
+          if (matchedLead) leadToDropId = matchedLead.id;
+        }
+
+        if (leadToDropId) {
+          await (supabase as any)
+            .from("plot_leads")
+            .update({ status: "dropped", plot_id: null })
+            .eq("id", leadToDropId);
+
+          await (supabase as any).from("lead_activities").insert({
+            lead_id: leadToDropId,
+            activity_type: "lead_dropped",
+            from_status: "converted",
+            to_status: "dropped",
+            performed_by: user.id,
+            notes: `🚫 Lead Dropped — Booking rejected during approval review: ${approvalNotes || "Returned by reviewer"}`,
+            metadata: { drop_reason: "approval_rejected", booking_id: selectedBooking.id },
+          });
+
+          await (supabase as any).from("lead_drop_reasons").insert({
+            lead_id: leadToDropId,
+            dropped_from_stage: "converted",
+            reason: "approval_rejected",
+            reason_label: "Booking Approval Rejected",
+            notes: approvalNotes || "Booking rejected during review",
+            dropped_by: user.id,
+          });
+        }
+      } catch (lErr) {
+        console.warn("Could not mark lead as dropped upon rejection:", lErr);
       }
 
       if (selectedBooking.sales_executive_id) {

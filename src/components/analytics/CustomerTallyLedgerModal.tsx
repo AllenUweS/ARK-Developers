@@ -2,8 +2,6 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  syncBookingToTally,
-  syncPaymentToTally,
   syncCustomerLedgerUnified,
   isBookingSyncedToTally,
   isPaymentSyncedToTally,
@@ -31,8 +29,9 @@ import {
   HelpCircle,
   Download,
   MessageCircle,
+  Lock,
 } from "lucide-react";
-import { downloadEMIStatementPDF, uploadEMIStatementPDFToStorage } from "@/lib/emiStatementPDF";
+import { downloadEMIStatementPDF, uploadEMIStatementPDFToStorage, generateEMIStatementPDFBlob } from "@/lib/emiStatementPDF";
 import { sendEMIStatementWhatsApp } from "@/lib/whatsappService";
 import { toast } from "sonner";
 
@@ -136,6 +135,13 @@ export function CustomerTallyLedgerModal({
   const advancePaid = Number(booking?.advance_paid || 0);
   const govtValuation = Number(booking?.govt_amount || 0);
 
+  const isUnapproved = Boolean(
+    booking &&
+    booking.approval_stage !== "completed" &&
+    booking.status !== "approved" &&
+    booking.status !== "sold"
+  );
+
   // Single Unified Customer Ledger Name in Tally Prime
   const customerLedgerName = `Customer - ${booking?.customer_name || "Customer"} (Plot #${plotNo})`;
 
@@ -226,6 +232,10 @@ export function CustomerTallyLedgerModal({
   // Single Customer Ledger Tally Sync Handler (Idempotent / Deduplicated)
   const syncCustomerLedgerToTally = async (forceResync = false) => {
     if (!booking) return;
+    if (isUnapproved) {
+      toast.warning("Cannot sync to Tally: Deal is still pending approval. Tally posting unlocks once Accounts confirms approval.");
+      return;
+    }
     setSyncing(true);
     try {
       const res = await syncCustomerLedgerUnified({
@@ -289,7 +299,7 @@ export function CustomerTallyLedgerModal({
     setSendingWhatsApp(true);
     const toastId = toast.loading(`Generating PDF & dispatching WhatsApp EMI Statement to ${booking.customer_name} via Meta API...`);
     try {
-      const pdfUrl = await uploadEMIStatementPDFToStorage({
+      const statementData = {
         customerName: booking.customer_name || "Customer",
         customerPhone: booking.customer_phone || undefined,
         customerAddress: booking.customer_address || undefined,
@@ -303,9 +313,14 @@ export function CustomerTallyLedgerModal({
         govtAmount: govtValuation,
         companyAmount: 0,
         installmentCount: schedules.length || booking.installment_count || 12,
+        installmentAmount: Number(booking.installment_amount || 0) || undefined,
+        firstDueDate: booking.first_installment_due_date,
+        bookingDate: booking.booking_date || booking.created_at,
         scheduleRows: schedules,
         recordedPayments: payments,
-      });
+      };
+
+      const pdfBlob = await generateEMIStatementPDFBlob(statementData);
 
       const totalCount = booking.installment_count || 12;
       const realizedCount = payments.length;
@@ -323,7 +338,7 @@ export function CustomerTallyLedgerModal({
         pendingInstallmentsText: `${Math.max(totalCount - realizedCount, 0)} EMIs remaining`,
         nextDueDate: nextDueDateStr,
         nextDueAmount: nextDueAmount,
-        pdfDocumentUrl: pdfUrl || undefined,
+        pdfBlob,
         pdfFileName: `EMI_Statement_Plot_${plotNo}.pdf`,
       });
 
@@ -356,7 +371,7 @@ export function CustomerTallyLedgerModal({
     setSendingWhatsAppPDF(true);
     const toastId = toast.loading(`Generating PDF & dispatching WhatsApp statement for ${booking.customer_name}...`);
     try {
-      const pdfUrl = await uploadEMIStatementPDFToStorage({
+      const statementData = {
         customerName: booking.customer_name || "Customer",
         customerPhone: booking.customer_phone || undefined,
         customerAddress: booking.customer_address || undefined,
@@ -370,9 +385,14 @@ export function CustomerTallyLedgerModal({
         govtAmount: govtValuation,
         companyAmount: 0,
         installmentCount: schedules.length || booking.installment_count || 12,
+        installmentAmount: Number(booking.installment_amount || 0) || undefined,
+        firstDueDate: booking.first_installment_due_date,
+        bookingDate: booking.booking_date || booking.created_at,
         scheduleRows: schedules,
         recordedPayments: payments,
-      });
+      };
+
+      const pdfBlob = await generateEMIStatementPDFBlob(statementData);
 
       const totalCount = booking.installment_count || 12;
       const realizedCount = payments.length;
@@ -390,7 +410,7 @@ export function CustomerTallyLedgerModal({
         pendingInstallmentsText: `${Math.max(totalCount - realizedCount, 0)} EMIs remaining`,
         nextDueDate: nextDueDateStr,
         nextDueAmount: nextDueAmount,
-        pdfDocumentUrl: pdfUrl || undefined,
+        pdfBlob,
         pdfFileName: `EMI_Statement_Plot_${plotNo}.pdf`,
       });
 
@@ -433,6 +453,11 @@ export function CustomerTallyLedgerModal({
               {govtValuation > 0 && (
                 <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold px-2.5 py-0.5 flex items-center gap-1">
                   🏛️ Govt Valuation: {formatMoney(govtValuation)}
+                </Badge>
+              )}
+              {isUnapproved && (
+                <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold px-2.5 py-0.5 flex items-center gap-1">
+                  <Lock className="h-3 w-3 text-amber-600" /> Pipeline Deal (Approval Pending)
                 </Badge>
               )}
             </div>
@@ -480,11 +505,16 @@ export function CustomerTallyLedgerModal({
                 size="sm"
                 variant="default"
                 onClick={() => syncCustomerLedgerToTally(false)}
-                disabled={syncing}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs gap-2 px-4 shadow-sm"
+                disabled={syncing || isUnapproved}
+                title={isUnapproved ? "Cannot sync unapproved deal to Tally Prime" : ""}
+                className={`text-white font-extrabold text-xs gap-2 px-4 shadow-sm ${
+                  isUnapproved
+                    ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
               >
                 <Zap className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "Syncing to Tally..." : "⚡ Sync to Tally Prime"}
+                {syncing ? "Syncing to Tally..." : isUnapproved ? "🔒 Approval Required to Sync" : "⚡ Sync to Tally Prime"}
               </Button>
             </div>
           </div>

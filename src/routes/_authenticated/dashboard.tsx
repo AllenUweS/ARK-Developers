@@ -31,6 +31,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { format, formatDistanceToNow, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { syncCancelledAndRejectedLeads } from "@/lib/leadBookingSync";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -58,11 +59,14 @@ function Dashboard() {
     queryKey: ["dashboard-stats", role],
     enabled: !!role,
     queryFn: async () => {
+      // Reconcile and self-heal any stale leads whose bookings were cancelled or rejected
+      await syncCancelledAndRejectedLeads();
+
       const [projects, plots, bookings, leads, messages, incentives, profiles] = await Promise.all([
         supabase.from("projects").select("id, status, created_at"),
         supabase.from("plots").select("id, status, price, project_id"),
         (supabase as any).from("bookings").select("id, status, total_price, booking_amount, advance_paid, incentive_amount, booking_date, created_at, sales_executive_id, customer_name, customer_phone, plots(plot_number, projects(name, code))").order("created_at", { ascending: false }),
-        (supabase as any).from("plot_leads").select("id, name, status, created_at"),
+        (supabase as any).from("plot_leads").select("id, name, status, created_at").order("created_at", { ascending: false }),
         supabase.from("contact_messages").select("id, status, created_at"),
         (supabase as any).from("incentive_grants").select("id, amount, granted_at"),
         (supabase as any).from("profiles").select("id, full_name, job_title"),
@@ -507,10 +511,12 @@ function Dashboard() {
                     </div>
                     <Badge
                       variant="outline"
-                      className={`shrink-0 capitalize font-medium ${
-                        booking.status === "approved"
+                      className={`shrink-0 capitalize font-semibold ${
+                        booking.status === "cancelled" || booking.status === "rejected"
+                          ? "bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400"
+                          : booking.status === "approved" || booking.status === "completed"
                           ? "bg-emerald-50 text-emerald-700 border-emerald-200/50 dark:bg-emerald-950/30 dark:text-emerald-400"
-                          : "bg-terracotta/5 text-terracotta border-terracotta/20"
+                          : "bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400"
                       }`}
                     >
                       {booking.status}
@@ -555,13 +561,21 @@ function Dashboard() {
                     </div>
                     <Badge
                       variant="outline"
-                      className={`shrink-0 capitalize font-medium ${
+                      className={`shrink-0 capitalize font-semibold ${
                         lead.status === "new"
-                          ? "bg-terracotta/10 text-terracotta border-terracotta/25"
+                          ? "bg-sky-500/10 text-sky-600 border-sky-500/30 dark:text-sky-400"
+                          : lead.status === "dropped"
+                          ? "bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400"
+                          : lead.status === "converted"
+                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400"
+                          : lead.status === "negotiating"
+                          ? "bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400"
+                          : lead.status === "meeting_scheduled"
+                          ? "bg-violet-500/10 text-violet-600 border-violet-500/30 dark:text-violet-400"
                           : "bg-muted text-muted-foreground border-border/50"
                       }`}
                     >
-                      {lead.status}
+                      {lead.status === "dropped" ? "Dropped" : lead.status}
                     </Badge>
                   </div>
                 ))}

@@ -15,7 +15,7 @@ import { LeadsBoard, type ProjectOption } from "./LeadsBoard";
 import { LeadDetailDialog } from "./LeadDetailDialog";
 import { isOpen, getTemperature, isAllowedStageTransition } from "./leadUtils";
 import type { EmployeeOption } from "./LeadCard";
-
+import { syncCancelledAndRejectedLeads } from "@/lib/leadBookingSync";
 
 type Profile = {
   id: string;
@@ -34,6 +34,7 @@ function computeStats(leads: LeadRow[]) {
     open: leads.filter((l) => isOpen(l.status)).length,
     hot: leads.filter((l) => getTemperature(l) === "hot").length,
     won: leads.filter((l) => l.status === "converted").length,
+    dropped: leads.filter((l) => l.status === "dropped").length,
   };
 }
 
@@ -88,6 +89,9 @@ export function LeadsCRM({ userId }: { userId: string }) {
     queryKey: ["all_plot_leads"],
     enabled: !!role,
     queryFn: async () => {
+      // Reconcile and self-heal any leads whose bookings were cancelled or rejected
+      await syncCancelledAndRejectedLeads();
+
       const { data, error } = await (supabase as any)
         .from("plot_leads")
         .select("*")
@@ -577,9 +581,14 @@ export function LeadsCRM({ userId }: { userId: string }) {
       canManage={viewingLead ? canManageLead(viewingLead) : false}
       userId={userId}
       canCaptureVisit={
-        !!viewingLead && (viewingLead.assigned_to ?? viewingLead.created_by) === userId
+        !!viewingLead && (
+          isAdmin ||
+          isManager ||
+          (viewingLead.assigned_to ?? viewingLead.created_by) === userId ||
+          !viewingLead.assigned_to
+        )
       }
-      canReviewVisits={isAdmin}
+      canReviewVisits={isAdmin || isManager}
       onOpenChange={(o) => !o && setViewingLead(null)}
       onStatusChange={(id, status) => handleStatusChange(id, status)}
       onEdit={(lead) => {
